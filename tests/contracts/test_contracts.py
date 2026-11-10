@@ -47,6 +47,33 @@ def test_synthetic_result_fixtures_match_contract_shapes() -> None:
     assert drafting_failure.drafting_stage.failure_code == "provider_timeout"
 
 
+def test_terminal_provider_error_fixtures_match_contract_shapes() -> None:
+    classification_failure = AnalysisResult.from_mapping(
+        load_fixture("classification-provider-error.json")
+    )
+    drafting_failure = AnalysisResult.from_mapping(
+        load_fixture("drafting-provider-error-retains-classification.json")
+    )
+
+    assert classification_failure.classification is None
+    assert classification_failure.drafting_stage.status.value == "skipped"
+    assert classification_failure.classification_stage.failure_code.value == (
+        "provider_error"
+    )
+    assert drafting_failure.classification is not None
+    assert drafting_failure.effective_severity is Severity.SEV1
+    assert drafting_failure.draft is None
+    assert drafting_failure.drafting_stage.failure_code.value == "provider_error"
+
+
+def test_failure_codes_do_not_expand_into_provider_detail_codes() -> None:
+    result = copy.deepcopy(load_fixture("classification-provider-error.json"))
+    result["classification_stage"]["failure_code"] = "provider_rate_limited"
+
+    with pytest.raises(ValueError, match="unsupported value"):
+        AnalysisResult.from_mapping(result)
+
+
 @pytest.mark.parametrize(
     ("path", "value"),
     [

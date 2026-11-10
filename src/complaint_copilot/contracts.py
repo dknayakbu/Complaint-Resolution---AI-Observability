@@ -88,6 +88,7 @@ class FailureCode(StrEnum):
     CLASSIFICATION_INVALID = "classification_invalid"
     DRAFTING_INVALID = "drafting_invalid"
     PROVIDER_TIMEOUT = "provider_timeout"
+    PROVIDER_ERROR = "provider_error"
 
 
 class InputSizeBucket(StrEnum):
