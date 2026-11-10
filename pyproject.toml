@@ -8,13 +8,19 @@ version = "0.1.0"
 description = "Shared contracts for the Complaint Resolution Co-Pilot"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115,<1",
+    "openai>=1.70,<3",
+    "streamlit>=1.43,<2",
+    "uvicorn[standard]>=0.34,<1",
+]
 
 [dependency-groups]
 dev = [
     "mypy>=1.15,<2",
     "pytest>=8.3,<10",
     "ruff>=0.11,<1",
+    "httpx>=0.28,<1",
 ]
 
 [tool.hatch.build.targets.wheel]

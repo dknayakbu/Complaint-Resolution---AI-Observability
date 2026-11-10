@@ -1,4 +1,12 @@
-# pip-compatible development tools; uv.lock remains the reproducible lockfile.
+# Runtime and development dependencies; uv.lock is the reproducible lockfile.
+fastapi>=0.115,<1
+openai>=1.70,<3
+streamlit>=1.43,<2
+uvicorn[standard]>=0.34,<1
+mypy>=1.15,<2
+pytest>=8.3,<10
+ruff>=0.11,<1
+httpx>=0.28,<1
 mypy>=1.15,<2
 pytest>=8.3,<10
 ruff>=0.11,<1
