@@ -1,0 +1,10 @@
+{"case_id":"drift-w1-001","complaint_text":"The app is slow and service access fails when I try to view my records after a password reset.","synthetic":true}
+{"case_id":"drift-w1-002","complaint_text":"I cannot access my online payment dashboard after a login loop and my recent statements are unavailable.","synthetic":true}
+{"case_id":"drift-w1-003","complaint_text":"The mobile app blocked my account after multiple failed sign-ins and I cannot check my recent transfers.","synthetic":true}
+{"case_id":"drift-w1-004","complaint_text":"I need access to my account history, but authentication loops repeatedly and my data is unavailable.","synthetic":true}
+{"case_id":"drift-w1-005","complaint_text":"The service portal shows an error when I try to access my account and I cannot view my payment records.","synthetic":true}
+{"case_id":"drift-w1-006","complaint_text":"I cannot sign in and I am locked out from the account portal after a password reset request.","synthetic":true}
+{"case_id":"drift-w1-007","complaint_text":"My online access is blocked and I keep receiving a login loop when I try to open my statements.","synthetic":true}
+{"case_id":"drift-w1-008","complaint_text":"Repeated authentication failures locked my account and I cannot access my recent payment details.","synthetic":true}
+{"case_id":"drift-w1-009","complaint_text":"The portal refuses my login and says my account is temporarily locked while I wait for verification.","synthetic":true}
+{"case_id":"drift-w1-010","complaint_text":"After the reset flow, I cannot access my account and the portal repeatedly loops during sign in.","synthetic":true}

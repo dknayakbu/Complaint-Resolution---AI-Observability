@@ -1,0 +1,30 @@
+{"case_id":"baseline-drift-001","complaint_text":"The service portal is failing and my account access is blocked after a password reset.","synthetic":true}
+{"case_id":"baseline-drift-002","complaint_text":"I cannot view my statements because the app keeps looping during login and access is denied.","synthetic":true}
+{"case_id":"baseline-drift-003","complaint_text":"The online account is locked and I cannot inspect my recent payments after repeated sign-in failures.","synthetic":true}
+{"case_id":"baseline-drift-004","complaint_text":"The secure portal is down and I cannot reach my file after a password reset step failed.","synthetic":true}
+{"case_id":"baseline-drift-005","complaint_text":"My login request loops and I cannot access the account page to review payment records.","synthetic":true}
+{"case_id":"baseline-drift-006","complaint_text":"I keep getting bounced out of the service portal and my account history is unavailable.","synthetic":true}
+{"case_id":"baseline-drift-007","complaint_text":"Password resets are broken and the app keeps locking me out of my account information.","synthetic":true}
+{"case_id":"baseline-drift-008","complaint_text":"The sign-in flow is failing and I cannot reach my health records or payment dashboard.","synthetic":true}
+{"case_id":"baseline-drift-009","complaint_text":"My access is blocked after repeated attempts and I cannot open the benefits portal.","synthetic":true}
+{"case_id":"baseline-drift-010","complaint_text":"The portal shows an error and I cannot read my statements because the app is redirecting.","synthetic":true}
+{"case_id":"baseline-drift-011","complaint_text":"My account is locked after a failed verification attempt and record access is denied.","synthetic":true}
+{"case_id":"baseline-drift-012","complaint_text":"I cannot view my recent transfers because the portal keeps failing authentication.","synthetic":true}
+{"case_id":"baseline-drift-013","complaint_text":"The financial portal is inaccessible and I cannot sign in due to repeated loops.","synthetic":true}
+{"case_id":"baseline-drift-014","complaint_text":"The app says my customer account is inactive and I am locked from the documents page.","synthetic":true}
+{"case_id":"baseline-drift-015","complaint_text":"I cannot complete login and my account access fails after the password reset workflow.","synthetic":true}
+{"case_id":"baseline-drift-016","complaint_text":"The site is denying access and my records are unavailable after repeated authentication error.","synthetic":true}
+{"case_id":"baseline-drift-017","complaint_text":"I am temporarily locked out of the portal and cannot access my account details.","synthetic":true}
+{"case_id":"baseline-drift-018","complaint_text":"I keep seeing a login loop while attempting to access my account and service records.","synthetic":true}
+{"case_id":"baseline-drift-019","complaint_text":"My access is blocked and my portal repeatedly asks me to reset my password again.","synthetic":true}
+{"case_id":"baseline-drift-020","complaint_text":"The payment portal is failing and I cannot open the statements page after the reset flow.","synthetic":true}
+{"case_id":"baseline-drift-021","complaint_text":"The sign-in process loops and my record page remains unavailable after authentication issues.","synthetic":true}
+{"case_id":"baseline-drift-022","complaint_text":"I cannot access my account because the service portal continually redirects to the login page.","synthetic":true}
+{"case_id":"baseline-drift-023","complaint_text":"The access system is failing and a reset loop prevents me from reviewing my account.","synthetic":true}
+{"case_id":"baseline-drift-024","complaint_text":"My account still fails self-service access after repeated verification attempts and I cannot login.","synthetic":true}
+{"case_id":"baseline-drift-025","complaint_text":"I am locked out of the portal and cannot read my account history after credential failures.","synthetic":true}
+{"case_id":"baseline-drift-026","complaint_text":"The website stops at the login loop and I cannot reach my account because of access issues.","synthetic":true}
+{"case_id":"baseline-drift-027","complaint_text":"The system keeps asking me to reset my password and then loops before I can see my records.","synthetic":true}
+{"case_id":"baseline-drift-028","complaint_text":"I cannot use the service because the app is repeatedly failing during account sign in.","synthetic":true}
+{"case_id":"baseline-drift-029","complaint_text":"My portal is unavailable and I am unable to access my data after failed authentication.","synthetic":true}
+{"case_id":"baseline-drift-030","complaint_text":"The authentication flow is broken and my account page shows repeated lockout errors.","synthetic":true}

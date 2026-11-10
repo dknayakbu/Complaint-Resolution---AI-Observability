@@ -1,0 +1,20 @@
+{
+  "dataset_version": "phase-c-v1",
+  "synthetic": true,
+  "families": {
+    "showcase": {"complaints": 12, "labels": 12},
+    "baseline": {"complaints": 30, "labels": 30},
+    "holdout": {"complaints": 30, "labels": 30},
+    "drift": {"baseline": 30, "window_1": 10, "window_2": 10}
+  },
+  "label_status": {
+    "showcase": "proposed",
+    "baseline": "reviewed",
+    "holdout": "pending_review",
+    "drift": "synthetic_only"
+  },
+  "notes": [
+    "All complaint records are synthetic and intentionally de-identified.",
+    "Input and label streams are kept separate to prevent leakage."
+  ]
+}

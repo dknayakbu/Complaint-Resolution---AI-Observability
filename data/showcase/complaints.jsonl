@@ -1,0 +1,12 @@
+{"case_id":"showcase-001","complaint_text":"My debit card was charged twice for the same hotel booking and the duplicate payment still appears on my account.","synthetic":true,"source_sample_id":"showcase-001"}
+{"case_id":"showcase-002","complaint_text":"I cannot access my online account because my password reset email never arrives, and I am locked out.","synthetic":true,"source_sample_id":"showcase-002"}
+{"case_id":"showcase-003","complaint_text":"A transfer from my checking account was sent to the wrong person and I need the funds returned immediately.","synthetic":true,"source_sample_id":"showcase-003"}
+{"case_id":"showcase-004","complaint_text":"My loan payment was incorrectly applied and now my account shows a missed due date despite my payment being made.","synthetic":true,"source_sample_id":"showcase-004"}
+{"case_id":"showcase-005","complaint_text":"The app shows I am locked out of the service and I cannot use my benefits verification page.","synthetic":true,"source_sample_id":"showcase-005"}
+{"case_id":"showcase-006","complaint_text":"I was refused a mortgage because the lender treated me differently after hearing about my disability.","synthetic":true,"source_sample_id":"showcase-006"}
+{"case_id":"showcase-007","complaint_text":"I suspect there is a scam text asking me to transfer funds to a fake account before my payment is processed.","synthetic":true,"source_sample_id":"showcase-007"}
+{"case_id":"showcase-008","complaint_text":"My family account was closed and I was told a suspicious charge was made without my consent.","synthetic":true,"source_sample_id":"showcase-008"}
+{"case_id":"showcase-009","complaint_text":"My direct deposit was delayed and my employer says there was a mismatch in my account details.","synthetic":true,"source_sample_id":"showcase-009"}
+{"case_id":"showcase-010","complaint_text":"I keep getting an error when trying to sign in to my health portal and I cannot access my records.","synthetic":true,"source_sample_id":"showcase-010"}
+{"case_id":"showcase-011","complaint_text":"A retailer denied my refund because I was treated differently after I reported a discrimination issue in the branch.","synthetic":true,"source_sample_id":"showcase-011"}
+{"case_id":"showcase-012","complaint_text":"The transaction history shows a charge for a service I never used and the merchant claims it was a valid payment.","synthetic":true,"source_sample_id":"showcase-012"}

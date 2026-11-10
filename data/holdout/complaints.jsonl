@@ -1,0 +1,30 @@
+{"case_id":"holdout-001","complaint_text":"My credit card was charged twice for the same flight purchase and I need the duplicate charge removed.","synthetic":true,"source_sample_id":"holdout-001"}
+{"case_id":"holdout-002","complaint_text":"An unauthorized transfer was sent from my savings account and I cannot access the funds after the transfer.","synthetic":true,"source_sample_id":"holdout-002"}
+{"case_id":"holdout-003","complaint_text":"A scammer pretended to be customer support and asked me to move my money to a secure account immediately.","synthetic":true,"source_sample_id":"holdout-003"}
+{"case_id":"holdout-004","complaint_text":"My mortgage payment posting was delayed even though the bank had already received the funds from my account.","synthetic":true,"source_sample_id":"holdout-004"}
+{"case_id":"holdout-005","complaint_text":"My benefits portal shows a lockout after repeated password resets and I cannot access my service report.","synthetic":true,"source_sample_id":"holdout-005"}
+{"case_id":"holdout-006","complaint_text":"A lender declined my rental application after I requested a reasonable accommodation for my disability.","synthetic":true,"source_sample_id":"holdout-006"}
+{"case_id":"holdout-007","complaint_text":"The payment history shows a duplicate debit for a subscription I cancelled last week.","synthetic":true,"source_sample_id":"holdout-007"}
+{"case_id":"holdout-008","complaint_text":"My account balance is missing funds after a card transaction I never approved.","synthetic":true,"source_sample_id":"holdout-008"}
+{"case_id":"holdout-009","complaint_text":"A fraudulent payment request was sent to my account and I want the transfer reversed before it clears.","synthetic":true,"source_sample_id":"holdout-009"}
+{"case_id":"holdout-010","complaint_text":"I attempted to use my lending portal, but my payment record is missing and the site marks it as failed.","synthetic":true,"source_sample_id":"holdout-010"}
+{"case_id":"holdout-011","complaint_text":"The customer service system marked my health records as inaccessible after a failed login and I cannot retrieve them.","synthetic":true,"source_sample_id":"holdout-011"}
+{"case_id":"holdout-012","complaint_text":"I was refused credit again because the branch treated me differently after I reported my disability status.","synthetic":true,"source_sample_id":"holdout-012"}
+{"case_id":"holdout-013","complaint_text":"A fake invoice asked me to pay again for a service already completed and the payment looked unauthorized.","synthetic":true,"source_sample_id":"holdout-013"}
+{"case_id":"holdout-014","complaint_text":"My payment card was debited twice for the same weekly subscription, and I need the duplicate charge removed.","synthetic":true,"source_sample_id":"holdout-014"}
+{"case_id":"holdout-015","complaint_text":"I was told my account had been locked for fraud review, and I still cannot access my online statements.","synthetic":true,"source_sample_id":"holdout-015"}
+{"case_id":"holdout-016","complaint_text":"My provider says a transfer was sent to an incorrect account number even though I never approved it.","synthetic":true,"source_sample_id":"holdout-016"}
+{"case_id":"holdout-017","complaint_text":"The app blocks access to my service account and says my password reset link is expired before I can log in.","synthetic":true,"source_sample_id":"holdout-017"}
+{"case_id":"holdout-018","complaint_text":"I was denied a loan because the lender treated me differently after concerns about my disability were raised.","synthetic":true,"source_sample_id":"holdout-018"}
+{"case_id":"holdout-019","complaint_text":"My family account shows a money transfer I did not authorize and the funds are missing from my balance.","synthetic":true,"source_sample_id":"holdout-019"}
+{"case_id":"holdout-020","complaint_text":"The merchant billed me twice for the same purchase and I need the duplicate payment reversed immediately.","synthetic":true,"source_sample_id":"holdout-020"}
+{"case_id":"holdout-021","complaint_text":"I cannot sign in to my account because the reset link loops without completing authentication.","synthetic":true,"source_sample_id":"holdout-021"}
+{"case_id":"holdout-022","complaint_text":"A scam message told me to share my account verification code to unblock my payment authorization.","synthetic":true,"source_sample_id":"holdout-022"}
+{"case_id":"holdout-023","complaint_text":"My payment application was denied because I was treated differently after being flagged as disabled.","synthetic":true,"source_sample_id":"holdout-023"}
+{"case_id":"holdout-024","complaint_text":"The service portal shows an incorrect account balance and I still cannot access my records for the last month.","synthetic":true,"source_sample_id":"holdout-024"}
+{"case_id":"holdout-025","complaint_text":"A fake service request tried to charge my account again after I had already paid for the service.","synthetic":true,"source_sample_id":"holdout-025"}
+{"case_id":"holdout-026","complaint_text":"My direct deposit did not arrive and my payment history shows a mismatch in the account details.","synthetic":true,"source_sample_id":"holdout-026"}
+{"case_id":"holdout-027","complaint_text":"I was told a transaction was completed for a billing error I never authorized, and the funds are gone.","synthetic":true,"source_sample_id":"holdout-027"}
+{"case_id":"holdout-028","complaint_text":"The service contact ignored my accommodation request and refused to process my application fairly.","synthetic":true,"source_sample_id":"holdout-028"}
+{"case_id":"holdout-029","complaint_text":"My payment account shows a duplicate charge for the same gym renewal despite my cancellation request.","synthetic":true,"source_sample_id":"holdout-029"}
+{"case_id":"holdout-030","complaint_text":"I cannot access my account history and the app says my credentials were reset by an unknown device.","synthetic":true,"source_sample_id":"holdout-030"}
