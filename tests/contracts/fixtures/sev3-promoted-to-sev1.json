@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "case_id": "case-fixture-promotion-001",
+  "analysis_id": "analysis-fixture-promotion-001",
+  "request_id": "request-fixture-promotion-001",
+  "analysis_revision": 1,
+  "run_mode": "fixture",
+  "analysis_outcome": "complete",
+  "case_state": "awaiting_review",
+  "trace_id": "trace-fixture-promotion-001",
+  "policy_version": "training-policy-v1",
+  "model_policy_version": "model-policy-v1",
+  "classification_prompt_version": "classification-prompt-v1",
+  "classification_schema_version": "classification-schema-v1",
+  "drafting_prompt_version": "drafting-prompt-v1",
+  "drafting_schema_version": "drafting-schema-v1",
+  "classification": {
+    "category": "cards_payments",
+    "model_severity": 3,
+    "evidence": [
+      {
+        "start": 0,
+        "end": 34,
+        "quote": "I lost money after a card payment."
+      }
+    ],
+    "decision_summary": "The original model prediction is SEV3."
+  },
+  "effective_severity": 1,
+  "draft": "We recognize the financial impact and will review this urgently.",
+  "classification_stage": {
+    "status": "succeeded",
+    "failure_code": null
+  },
+  "drafting_stage": {
+    "status": "succeeded",
+    "failure_code": null
+  },
+  "cost": {
+    "known_subtotal_usd": "0",
+    "complete": false,
+    "unknown_reason": "fixture usage is not reported"
+  }
+}

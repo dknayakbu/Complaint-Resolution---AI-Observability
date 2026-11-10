@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "case_id": "case-fixture-drafting-failure-001",
+  "analysis_id": "analysis-fixture-drafting-failure-001",
+  "request_id": "request-fixture-drafting-failure-001",
+  "analysis_revision": 1,
+  "run_mode": "fixture",
+  "analysis_outcome": "manual_required",
+  "case_state": "manual_required",
+  "trace_id": "trace-fixture-drafting-failure-001",
+  "policy_version": "training-policy-v1",
+  "model_policy_version": "model-policy-v1",
+  "classification_prompt_version": "classification-prompt-v1",
+  "classification_schema_version": "classification-schema-v1",
+  "drafting_prompt_version": "drafting-prompt-v1",
+  "drafting_schema_version": "drafting-schema-v1",
+  "classification": {
+    "category": "cards_payments",
+    "model_severity": 3,
+    "evidence": [
+      {
+        "start": 0,
+        "end": 34,
+        "quote": "I lost money after a card payment."
+      }
+    ],
+    "decision_summary": "Financial harm requires urgent human review."
+  },
+  "effective_severity": 1,
+  "draft": null,
+  "classification_stage": {
+    "status": "succeeded",
+    "failure_code": null
+  },
+  "drafting_stage": {
+    "status": "failed",
+    "failure_code": "provider_timeout"
+  },
+  "cost": {
+    "known_subtotal_usd": "0",
+    "complete": false,
+    "unknown_reason": "drafting provider usage unavailable"
+  }
+}

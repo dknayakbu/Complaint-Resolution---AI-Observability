@@ -1,0 +1,4 @@
+# pip-compatible development tools; uv.lock remains the reproducible lockfile.
+mypy>=1.15,<2
+pytest>=8.3,<10
+ruff>=0.11,<1
