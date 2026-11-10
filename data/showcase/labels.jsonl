@@ -1,0 +1,12 @@
+{"case_id":"showcase-001","category":"cards_payments","severity":"SEV1","queue":"cards_payments","label_status":"proposed"}
+{"case_id":"showcase-002","category":"accounts","severity":"SEV2","queue":"accounts","label_status":"proposed"}
+{"case_id":"showcase-003","category":"fraud_scams","severity":"SEV1","queue":"fraud_scams","label_status":"proposed"}
+{"case_id":"showcase-004","category":"lending","severity":"SEV2","queue":"lending","label_status":"proposed"}
+{"case_id":"showcase-005","category":"service_access","severity":"SEV3","queue":"service_access","label_status":"proposed"}
+{"case_id":"showcase-006","category":"discrimination","severity":"SEV1","queue":"discrimination","label_status":"proposed"}
+{"case_id":"showcase-007","category":"fraud_scams","severity":"SEV2","queue":"fraud_scams","label_status":"proposed"}
+{"case_id":"showcase-008","category":"accounts","severity":"SEV2","queue":"accounts","label_status":"proposed"}
+{"case_id":"showcase-009","category":"accounts","severity":"SEV3","queue":"accounts","label_status":"proposed"}
+{"case_id":"showcase-010","category":"service_access","severity":"SEV2","queue":"service_access","label_status":"proposed"}
+{"case_id":"showcase-011","category":"discrimination","severity":"SEV2","queue":"discrimination","label_status":"proposed"}
+{"case_id":"showcase-012","category":"other","severity":"SEV3","queue":"other","label_status":"proposed"}
