@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "case_id": "case-fixture-classification-provider-error-001",
+  "analysis_id": "analysis-fixture-classification-provider-error-001",
+  "request_id": "request-fixture-classification-provider-error-001",
+  "analysis_revision": 1,
+  "run_mode": "fixture",
+  "analysis_outcome": "manual_required",
+  "case_state": "manual_required",
+  "trace_id": "trace-fixture-classification-provider-error-001",
+  "policy_version": "training-policy-v1",
+  "model_policy_version": "model-policy-v1",
+  "classification_prompt_version": "classification-prompt-v1",
+  "classification_schema_version": "classification-schema-v1",
+  "drafting_prompt_version": null,
+  "drafting_schema_version": null,
+  "classification": null,
+  "effective_severity": null,
+  "draft": null,
+  "classification_stage": {
+    "status": "failed",
+    "failure_code": "provider_error"
+  },
+  "drafting_stage": {
+    "status": "skipped",
+    "failure_code": null
+  },
+  "cost": {
+    "known_subtotal_usd": "0",
+    "complete": false,
+    "unknown_reason": "provider usage unavailable"
+  }
+}
