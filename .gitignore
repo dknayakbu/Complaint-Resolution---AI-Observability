@@ -218,3 +218,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local project state and sensitive files
+.venv/
+.uv/
+.ruff_cache/
+.env.*
+!.env.example
+.secrets/
+*.pem
+*.key
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
