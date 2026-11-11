@@ -58,8 +58,17 @@ def main() -> None:
             "FIXTURE MODE — scripted synthetic responses; not an OpenAI/model demo."
         )
     else:
-        st.error("LIVE MODE — provider calls may incur cost.")
-        st.caption("Live provider mode must be separately approved.")
+        st.error(
+            "LIVE MODE — synthetic text is sent to OpenAI and calls may cost money."
+        )
+        st.caption(
+            "Approved limits: "
+            f"{mode['live_max_requests']} workflow requests, "
+            f"{mode['live_max_calls']} provider attempts, "
+            f"{mode['live_max_tokens']} reserved tokens, "
+            f"USD {mode['live_max_cost_usd']} reserved cost. "
+            "A successful complaint normally requires two provider calls."
+        )
 
     try:
         model_policy = _request("GET", "/api/model-policy")
@@ -83,7 +92,7 @@ def main() -> None:
         ["Complaint intake", "Reviewer queue", "Synthetic replays", "Alert inbox"]
     )
     with intake_tab:
-        _intake()
+        _intake(live_mode=mode["mode"] == "live")
     with review_tab:
         _review()
     with replay_tab:
@@ -92,16 +101,28 @@ def main() -> None:
         _alerts()
 
 
-def _intake() -> None:
+def _intake(*, live_mode: bool = False) -> None:
+    if live_mode:
+        st.caption(
+            "Live mode sends this invented complaint to the configured OpenAI "
+            "classification and drafting models. Fixture controls are disabled."
+        )
+        complaint_label = "Synthetic complaint sent to live models"
+    else:
+        complaint_label = "Synthetic complaint text"
     complaint = st.text_area(
-        "Synthetic complaint text",
-        placeholder="Paste an invented complaint; do not enter customer data.",
+        complaint_label,
+        placeholder="Enter an invented complaint; do not enter customer data.",
         max_chars=20_000,
     )
-    source_sample_id = st.text_input(
-        "Optional synthetic fixture ID",
-        help="Use scene-2-controlled-raw-miss to rehearse the safeguards.",
-    )
+    source_sample_id = None
+    if not live_mode:
+        source_sample_id = st.text_input(
+            "Optional synthetic fixture ID",
+            help="Use scene-2-controlled-raw-miss to rehearse a controlled "
+            "classification miss, or synthetic-provider-timeout for a fixture "
+            "failure.",
+        )
     if st.button("Submit for analysis", type="primary"):
         if not complaint.strip():
             st.error("Enter non-empty synthetic complaint text.")
@@ -113,7 +134,11 @@ def _intake() -> None:
                 payload={
                     "complaint_text": complaint,
                     "synthetic": True,
-                    "source_sample_id": source_sample_id.strip() or None,
+                    "source_sample_id": (
+                        source_sample_id.strip()
+                        if source_sample_id and source_sample_id.strip()
+                        else None
+                    ),
                 },
                 headers={"Idempotency-Key": str(uuid.uuid4())},
             )
@@ -338,6 +363,32 @@ def _show_case(case: dict[str, Any], *, view: str) -> None:
             f"**Model severity:** SEV{classification['model_severity']} · "
             f"**Effective severity:** SEV{result['effective_severity']}"
         )
+    classification_stage = result.get("classification_stage")
+    drafting_stage = result.get("drafting_stage")
+    if isinstance(classification_stage, dict) and isinstance(drafting_stage, dict):
+        st.caption(
+            "Generation stages — "
+            f"classification: {classification_stage['status']}; "
+            f"drafting: {drafting_stage['status']}."
+        )
+    cost = result.get("cost")
+    if isinstance(cost, dict):
+        known_cost = cost.get("known_subtotal_usd")
+        if known_cost is not None:
+            qualifier = (
+                "complete estimate"
+                if cost.get("complete")
+                else "known subtotal; some cost is unknown"
+            )
+            pricing_basis = (
+                "at the approved live rate ceiling"
+                if result.get("run_mode") == "demo"
+                else "using fixture pricing"
+            )
+            st.caption(
+                f"Estimated model cost: USD {known_cost} ({qualifier}, "
+                f"{pricing_basis}; not a provider invoice)."
+            )
     if result.get("draft"):
         st.text_area(
             "Draft plus fixed wording",

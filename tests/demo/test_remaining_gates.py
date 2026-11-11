@@ -9,7 +9,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from complaint_copilot.api import create_app
-from complaint_copilot.provider import FixtureProvider, OpenAIProvider
+from complaint_copilot.provider import (
+    FixtureProvider,
+    OpenAIProvider,
+    ProviderFailure,
+    ProviderResponse,
+    RetryingProvider,
+)
 from complaint_copilot.repository import SQLiteRepository
 from complaint_copilot.settings import AppSettings
 
@@ -64,6 +70,42 @@ def test_live_mode_requires_explicit_bounded_approval() -> None:
     assert approved.live_max_calls == 6
     assert approved.live_max_tokens == 100_000
     assert approved.live_max_cost_usd == Decimal("100")
+
+
+def test_empty_stage_model_environment_values_use_the_shared_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_MODE", "fixture")
+    monkeypatch.setenv("CLASSIFICATION_MODEL", "")
+    monkeypatch.setenv("DRAFTING_MODEL", " ")
+    monkeypatch.setenv("EVALUATION_MODEL", "")
+
+    settings = AppSettings.from_env()
+
+    assert settings.classification_model is None
+    assert settings.drafting_model is None
+    assert settings.evaluation_model is None
+
+
+def test_retrying_provider_reports_attempts_without_multiplying_model_responses() -> (
+    None
+):
+    provider = Mock()
+    provider.generate.side_effect = [
+        ProviderFailure("provider_timeout", retryable=True),
+        ProviderResponse(
+            '{"result":"ok"}',
+            "recording-model",
+            input_tokens=10,
+            output_tokens=5,
+        ),
+    ]
+    retrying = RetryingProvider(provider, max_attempts=2, sleeper=lambda _: None)
+
+    response = retrying.generate(None, "recording-model", "system", "user")
+
+    assert response.attempts == 2
+    assert provider.generate.call_count == 2
 
 
 def test_live_approval_request_limit_persists_and_blocks_before_provider_call(

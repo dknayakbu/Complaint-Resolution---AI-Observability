@@ -155,7 +155,7 @@ def _optional_decimal_env(name: str) -> Decimal | None:
 
 def _optional_model_env(name: str) -> str | None:
     value = os.getenv(name)
-    if value is None:
+    if value is None or not value.strip():
         return None
     return value.strip()
 

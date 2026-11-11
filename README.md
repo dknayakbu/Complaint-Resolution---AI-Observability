@@ -1,16 +1,19 @@
 # Complaint Resolution Co-Pilot
 
 This repository contains the shared contracts and Phase A/B/C modules, plus a
-local synthetic complaint application and observability stack. The supported
-journey uses only scripted fixture responses, synthetic complaints, a local
-SQLite database, and simulated queues. It does not make OpenAI calls or send
-external notifications.
+local complaint application and observability stack. Fixture mode is the safe
+default and uses scripted responses. A separately approved live mode sends
+invented complaint text to configured OpenAI models. Both modes use a local
+SQLite database and simulated queues; neither sends complaints to a real queue
+or sends external notifications.
 
 ## Run the local synthetic demo
 
 Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), and Docker with
 the Compose plugin. From the repository root, run these commands in
-PowerShell. Each service starts after its dependency is ready:
+PowerShell. Ensure `.env` has `APP_MODE=fixture` before starting; this path
+uses scripted provider responses only. Each service starts after its dependency
+is ready:
 
 ```powershell
 uv sync --frozen
@@ -97,6 +100,92 @@ docker compose down
 
 Do not add `-v` unless you intentionally want to remove the named volumes and
 their local SQLite/Grafana state.
+
+## Run an approved live-model demo
+
+Live mode makes real provider calls that may incur charges. It is disabled by
+default. Use **invented complaint text only**, and enable it only after the
+demo owner has approved the provider, models, request count, call count, token
+limit, and maximum spend. Never paste an API key into chat or commit it.
+
+1. If you do not already have a local `.env`, copy the safe template and edit
+   it locally:
+
+   ```powershell
+   Copy-Item .env.example .env
+   code .env
+   ```
+
+   Do not overwrite an existing `.env`; it may contain local credentials.
+2. Set `APP_MODE=live` and fill in `OPENAI_API_KEY`. Replace both fixture
+   tokens with private, sufficiently strong values:
+   `REVIEWER_TOKEN` and `INTERNAL_TOKEN`.
+3. Only after explicit approval, set `LIVE_MODEL_APPROVED=true` and a new,
+   unique `LIVE_MODEL_APPROVAL_ID`. Fill every `LIVE_MODEL_MAX_*` value:
+   - `LIVE_MODEL_MAX_REQUESTS` counts baseline requests and complaint intakes.
+   - `LIVE_MODEL_MAX_CALLS` counts every provider attempt, including retries.
+     One successful two-stage complaint needs two calls; with
+     `PROVIDER_MAX_ATTEMPTS=2`, reserve up to four calls per complaint.
+   - `LIVE_MODEL_MAX_TOKENS` is the maximum reserved token total.
+   - `LIVE_MODEL_MAX_COST_USD` is the maximum reserved cost.
+   - `LIVE_MODEL_MAX_OUTPUT_TOKENS` caps each model response.
+   - `LIVE_MODEL_MAX_USD_PER_1K_TOKENS` must be at least the highest current
+     input or output token rate for every configured stage model.
+
+   Compute limits for the planned number of baseline/intake requests, configured
+   retries and worst-case prompt/output size. Limits are hard local reservations;
+   failed attempts are not refunded. They are not a provider-side spending cap.
+   A used approval ID cannot be reused with changed limits.
+4. Set `MODEL_NAME` and, if desired, `CLASSIFICATION_MODEL`,
+   `DRAFTING_MODEL`, and `EVALUATION_MODEL`. For the first live run, using one
+   reviewed model for classification and drafting makes the configuration
+   easier to explain. Set `SHORT_INPUT_MAX` and `MEDIUM_INPUT_MAX` to positive,
+   ordered character-count thresholds for short/medium/long telemetry buckets.
+   API complaints are limited to 20,000 characters.
+5. Start or recreate the configured services:
+
+   ```powershell
+   docker compose config --quiet
+   if ($LASTEXITCODE -ne 0) { throw "Compose configuration is invalid" }
+   docker compose up -d --build
+   ```
+
+6. Confirm <http://localhost:8000/api/mode> reports `"mode": "live"`,
+   `"provider": "openai"`, and `"live_approved": "true"`. The UI must display
+   **LIVE MODE** and the configured limits. If any value is wrong, stop and
+   correct `.env` before submitting anything.
+7. Open <http://localhost:8501>. Enter one short, fictional complaint in
+   **Complaint intake** and submit it. The fixture-ID field is not shown in
+   live mode. A completed case normally makes one classification call followed
+   by one drafting call; retries consume additional approved calls. If
+   classification or drafting fails, the UI shows the explicit manual-required
+   state rather than a fabricated result.
+8. In **Reviewer queue**, inspect the category, original model severity,
+   safeguarded effective severity and draft. Approve only the current revision
+   to create one simulated queue entry.
+9. Open the case trace in Jaeger using the trace reference shown in the UI.
+   Classification and drafting spans identify requested/served model and
+   available token usage, without adding complaint text to telemetry. Prometheus
+   and Grafana show application-level live-mode counts and trends.
+
+The complaint text must be invented, not actual random customer data. Model
+outputs and categories can vary, and safeguards only promote urgency for their
+covered signals; do not expect an artificial raw-model miss. The
+`scene-2-controlled-raw-miss` ID is a deterministic `FixtureProvider` switch in
+`src/complaint_copilot/provider.py`; it is unavailable in live mode and is not
+sent to the live model. The same applies to the fixture timeout ID.
+
+Live cost is a conservative estimate from reported token usage at the approved
+maximum rate for both input and output tokens; it is not the provider's actual
+bill. Fixture-mode cost uses the repository's versioned fixture pricing table.
+Verify the approved rate against current prices before presenting dollar
+amounts. If a call is retried and earlier attempt usage is unavailable, the
+stage cost is reported as unknown rather than counting only the final response.
+Do not run
+`scripts\demo_rehearsal.py` in live mode; it is a fixture-only acceptance
+rehearsal. To return to the safe fixture mode, set
+`APP_MODE=fixture`, keep the approval flag false, then run
+`docker compose up -d --build api ui` and verify `/api/mode` before continuing.
 
 ## Checks
 

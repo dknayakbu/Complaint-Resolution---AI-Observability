@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import cast
 
+from opentelemetry.trace import Span
+
 from complaint_copilot.acknowledgement import (
     DRAFTING_PROMPT_VERSION,
     DRAFTING_SCHEMA_VERSION,
@@ -42,7 +44,7 @@ from complaint_copilot.contracts import (
     StageUsageEvent,
     TokenUsage,
 )
-from complaint_copilot.cost import CostError, calculate_usage_cost
+from complaint_copilot.cost import CostError, PricingRule, calculate_usage_cost
 from complaint_copilot.feedback import merge
 from complaint_copilot.instrumentation import flush_telemetry, instruments, tracer
 from complaint_copilot.policy import (
@@ -65,10 +67,10 @@ def _failure_code(error: ProviderFailure) -> FailureCode:
     return FailureCode.PROVIDER_ERROR
 
 
-def _input_bucket(text: str) -> InputSizeBucket:
-    if len(text) <= 2000:
+def _input_bucket(text: str, *, short_max: int, medium_max: int) -> InputSizeBucket:
+    if len(text) <= short_max:
         return InputSizeBucket.SHORT
-    if len(text) <= 8000:
+    if len(text) <= medium_max:
         return InputSizeBucket.MEDIUM
     return InputSizeBucket.LONG
 
@@ -82,13 +84,25 @@ class ComplaintOrchestrator:
         policy: ModelPolicy,
         model_policy_version: str,
         run_mode: RunMode,
+        short_input_max: int = 2_000,
+        medium_input_max: int = 8_000,
+        live_rate_ceiling: Decimal | None = None,
         clock: Clock = lambda: datetime.now(UTC),
     ) -> None:
+        if short_input_max <= 0 or medium_input_max <= short_input_max:
+            raise ValueError("input bucket limits must be positive and ordered")
+        if live_rate_ceiling is not None and (
+            not live_rate_ceiling.is_finite() or live_rate_ceiling <= 0
+        ):
+            raise ValueError("live rate ceiling must be a positive finite amount")
         self._repository = repository
         self._provider = provider
         self._policy = policy
         self._model_policy_version = model_policy_version
         self._run_mode = run_mode
+        self._short_input_max = short_input_max
+        self._medium_input_max = medium_input_max
+        self._live_rate_ceiling = live_rate_ceiling
         self._clock = clock
         self._classification_agent = ClassificationAgent(
             provider,
@@ -177,6 +191,8 @@ class ComplaintOrchestrator:
         drafting_failure: FailureCode | None = None
         classification_response: ProviderResponse | None = None
         drafting_response: ProviderResponse | None = None
+        classification_attempts = 1
+        drafting_attempts = 1
         classification_duration = 0
         drafting_duration = 0
 
@@ -186,13 +202,16 @@ class ComplaintOrchestrator:
                 "agent.classification",
                 attributes={
                     "agent.stage": Stage.CLASSIFICATION.value,
+                    "gen_ai.request.model": classification_decision.model,
                     "model.requested": classification_decision.model,
                     "run.mode": self._run_mode.value,
                 },
-            ):
+            ) as span:
                 classification_response = self._classification_agent.run(
                     request, classification_decision
                 )
+                classification_attempts = classification_response.attempts
+                _record_generation_attributes(span, classification_response)
             classification = validate_classification(
                 classification_response.content, request.complaint_text
             )
@@ -211,6 +230,8 @@ class ComplaintOrchestrator:
             )
         except ProviderFailure as error:
             classification_failure = _failure_code(error)
+            classification_attempts = error.attempts
+            classification_response = error.usage
         except (ContractViolation, ValueError, json.JSONDecodeError):
             classification_failure = FailureCode.CLASSIFICATION_INVALID
         finally:
@@ -231,6 +252,7 @@ class ComplaintOrchestrator:
                     succeeded=classification_status is StageStatus.SUCCEEDED,
                     failure=classification_failure,
                     response=classification_response,
+                    attempt=classification_attempts,
                 )
             )
 
@@ -243,18 +265,23 @@ class ComplaintOrchestrator:
                     "agent.drafting",
                     attributes={
                         "agent.stage": Stage.DRAFTING.value,
+                        "gen_ai.request.model": drafting_decision.model,
                         "model.requested": drafting_decision.model,
                         "run.mode": self._run_mode.value,
                     },
-                ):
+                ) as span:
                     drafting_response = self._drafting_agent.run(
                         request, classification, effective_severity, drafting_decision
                     )
+                    drafting_attempts = drafting_response.attempts
+                    _record_generation_attributes(span, drafting_response)
                 personalized = validate_draft(drafting_response.content)
                 draft = assemble_acknowledgement(personalized)
                 drafting_status = StageStatus.SUCCEEDED
             except ProviderFailure as error:
                 drafting_failure = _failure_code(error)
+                drafting_attempts = error.attempts
+                drafting_response = error.usage
             except (ContractViolation, ValueError, json.JSONDecodeError):
                 drafting_failure = FailureCode.DRAFTING_INVALID
             finally:
@@ -273,6 +300,7 @@ class ComplaintOrchestrator:
                         succeeded=drafting_status is StageStatus.SUCCEEDED,
                         failure=drafting_failure,
                         response=drafting_response,
+                        attempt=drafting_attempts,
                     )
                 )
 
@@ -358,7 +386,11 @@ class ComplaintOrchestrator:
                 analysis_id=analysis_id,
                 analysis_revision=revision,
                 run_mode=self._run_mode,
-                input_size_bucket=_input_bucket(request.complaint_text),
+                input_size_bucket=_input_bucket(
+                    request.complaint_text,
+                    short_max=self._short_input_max,
+                    medium_max=self._medium_input_max,
+                ),
                 policy_version=result.policy_version,
                 model_policy_version=self._model_policy_version,
                 analysis_outcome=result.analysis_outcome,
@@ -412,10 +444,34 @@ class ComplaintOrchestrator:
         succeeded: bool,
         failure: FailureCode | None,
         response: ProviderResponse | None,
+        attempt: int,
     ) -> StageUsageEvent:
-        usage = _token_usage(response)
+        usage = (
+            TokenUsage(
+                input_tokens=None,
+                output_tokens=None,
+                provider_cached_input_tokens=None,
+                known=False,
+                unknown_reason="retry_attempt_usage_unknown",
+            )
+            if attempt > 1
+            else _token_usage(response)
+        )
         try:
-            observation = calculate_usage_cost(usage, model=model)
+            if self._live_rate_ceiling is None:
+                observation = calculate_usage_cost(usage, model=model)
+            else:
+                conservative_price = PricingRule(
+                    input_usd_per_1k_tokens=self._live_rate_ceiling,
+                    output_usd_per_1k_tokens=self._live_rate_ceiling,
+                    cached_input_usd_per_1k_tokens=self._live_rate_ceiling,
+                )
+                observation = calculate_usage_cost(
+                    usage,
+                    model=model,
+                    pricing={model: conservative_price},
+                    pricing_version="live-approved-rate-ceiling-v1",
+                )
         except CostError:
             observation = CostObservation(
                 amount_usd=None,
@@ -433,9 +489,13 @@ class ComplaintOrchestrator:
             analysis_id=analysis_id,
             analysis_revision=revision,
             stage=stage,
-            attempt=1,
+            attempt=attempt,
             run_mode=self._run_mode,
-            input_size_bucket=_input_bucket(complaint_text),
+            input_size_bucket=_input_bucket(
+                complaint_text,
+                short_max=self._short_input_max,
+                medium_max=self._medium_input_max,
+            ),
             requested_model=model,
             served_model=response.served_model if response is not None else None,
             prompt_version=prompt_version,
@@ -472,6 +532,16 @@ def _token_usage(response: ProviderResponse | None) -> TokenUsage:
         known=True,
         unknown_reason=None,
     )
+
+
+def _record_generation_attributes(span: Span, response: ProviderResponse) -> None:
+    span.set_attribute("gen_ai.request.attempt_count", response.attempts)
+    if response.served_model is not None:
+        span.set_attribute("gen_ai.response.model", response.served_model)
+    if response.input_tokens is not None:
+        span.set_attribute("gen_ai.usage.input_tokens", response.input_tokens)
+    if response.output_tokens is not None:
+        span.set_attribute("gen_ai.usage.output_tokens", response.output_tokens)
 
 
 def _total_cost(events: list[StageUsageEvent]) -> tuple[Decimal, bool]:

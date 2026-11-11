@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from decimal import Decimal
 from pathlib import Path
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 
 from complaint_copilot.api import create_app
-from complaint_copilot.contracts import Stage
+from complaint_copilot.classification import ClassificationAgent
+from complaint_copilot.contracts import (
+    AnalysisRequest,
+    InputSizeBucket,
+    ModelDecision,
+    Stage,
+)
+from complaint_copilot.orchestrator import (
+    _input_bucket,
+    _record_generation_attributes,
+)
 from complaint_copilot.provider import (
     FixtureProvider,
     ProviderFailure,
@@ -119,6 +132,62 @@ def test_fixture_two_stage_review_journey_and_duplicate_approval(
         assert len(client.get("/api/queue").json()) == 1
 
 
+def test_retried_stage_usage_is_not_underreported(tmp_path: Path) -> None:
+    complaint = "Synthetic complaint: duplicate debit left rent money short."
+    classification = ProviderResponse(
+        json.dumps(
+            {
+                "category": "cards_payments",
+                "model_severity": 3,
+                "evidence": [{"start": 0, "end": len(complaint), "quote": complaint}],
+                "decision_summary": "Controlled synthetic test result.",
+            }
+        ),
+        "fixture-model",
+        10,
+        4,
+        attempts=2,
+    )
+    provider = FixtureProvider(
+        {
+            Stage.CLASSIFICATION: [classification],
+            Stage.DRAFTING: [
+                ProviderResponse(
+                    json.dumps({"draft": "Thank you for explaining the issue."}),
+                    "fixture-model",
+                    12,
+                    5,
+                )
+            ],
+        }
+    )
+
+    with _client(tmp_path, provider) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "retry-usage"},
+            json={"complaint_text": complaint, "synthetic": True},
+        )
+        assert response.status_code == 201
+
+    with sqlite3.connect(tmp_path / "demo.sqlite3") as connection:
+        rows = connection.execute(
+            "SELECT event_json FROM stage_usage_events ORDER BY rowid"
+        ).fetchall()
+    events = [json.loads(row[0]) for row in rows]
+    classification_event = next(
+        event for event in events if event["stage"] == Stage.CLASSIFICATION.value
+    )
+
+    assert classification_event["attempt"] == 2
+    assert classification_event["usage"]["known"] is False
+    assert (
+        classification_event["usage"]["unknown_reason"] == "retry_attempt_usage_unknown"
+    )
+    assert classification_event["cost"]["complete"] is False
+    assert classification_event["cost"]["amount_usd"] is None
+
+
 def test_fixture_draft_reflects_the_replacement_card_issue(tmp_path: Path) -> None:
     complaint = (
         "My replacement debit card arrived late, but my existing card still works."
@@ -178,6 +247,226 @@ def test_controlled_raw_miss_fixture_records_model_and_effective_severity(
     assert result["classification"]["model_severity"] == 3
     assert result["effective_severity"] == 1
     assert analysis["policy_flags"]
+
+
+def test_live_intake_uses_arbitrary_complaint_for_both_stages_without_fixture_id(
+    tmp_path: Path,
+) -> None:
+    complaint = (
+        "I was charged twice for groceries and the duplicate debit affects my "
+        "weekly budget."
+    )
+    provider = FixtureProvider()
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-demo.sqlite3",
+        model="recording-model",
+        openai_api_key="not-used",
+        reviewer_token="live-reviewer",
+        internal_token="live-internal",
+        short_input_max=2_000,
+        medium_input_max=8_000,
+        live_model_approved=True,
+        live_approval_id="test-live-dynamic-intake",
+        live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("10"),
+        live_max_output_tokens=256,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "dynamic-live-intake"},
+            json={"complaint_text": complaint, "synthetic": True},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["state"] == "awaiting_review"
+    assert [call[0] for call in provider.calls] == [
+        Stage.CLASSIFICATION,
+        Stage.DRAFTING,
+    ]
+    assert all(complaint in call[2] for call in provider.calls)
+    assert all("source_sample_id" not in call[2] for call in provider.calls)
+
+
+def test_live_intake_rejects_fixture_controls_before_provider_call(
+    tmp_path: Path,
+) -> None:
+    provider = FixtureProvider()
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-fixture-control.sqlite3",
+        model="recording-model",
+        openai_api_key="not-used",
+        reviewer_token="live-reviewer",
+        internal_token="live-internal",
+        short_input_max=2_000,
+        medium_input_max=8_000,
+        live_model_approved=True,
+        live_approval_id="test-live-fixture-control",
+        live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("10"),
+        live_max_output_tokens=256,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "live-fixture-control"},
+            json={
+                "complaint_text": "Synthetic complaint text.",
+                "source_sample_id": "scene-2-controlled-raw-miss",
+            },
+        )
+
+    assert response.status_code == 422
+    assert provider.calls == []
+
+
+def test_live_cost_uses_approved_rate_ceiling_for_configured_model(
+    tmp_path: Path,
+) -> None:
+    complaint = "Synthetic grocery payment complaint."
+    classification = ProviderResponse(
+        json.dumps(
+            {
+                "category": "cards_payments",
+                "model_severity": 2,
+                "evidence": [{"start": 0, "end": len(complaint), "quote": complaint}],
+                "decision_summary": "The complaint concerns a payment.",
+            }
+        ),
+        "unlisted-live-model",
+        input_tokens=30,
+        output_tokens=10,
+    )
+    drafting = ProviderResponse(
+        json.dumps({"draft": "Thank you for explaining the payment concern."}),
+        "unlisted-live-model",
+        input_tokens=20,
+        output_tokens=10,
+    )
+    provider = FixtureProvider(
+        {
+            Stage.CLASSIFICATION: [classification],
+            Stage.DRAFTING: [drafting],
+        }
+    )
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-cost-ceiling.sqlite3",
+        model="unlisted-live-model",
+        openai_api_key="not-used",
+        reviewer_token="live-reviewer",
+        internal_token="live-internal",
+        short_input_max=2_000,
+        medium_input_max=8_000,
+        live_model_approved=True,
+        live_approval_id="test-live-cost-ceiling",
+        live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("10"),
+        live_max_output_tokens=256,
+        live_max_usd_per_1k_tokens=Decimal("0.5"),
+    )
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "live-rate-ceiling-cost"},
+            json={"complaint_text": complaint},
+        )
+
+    cost = response.json()["analyses"][0]["result"]["cost"]
+    assert response.status_code == 201
+    assert cost["complete"] is True
+    assert cost["known_subtotal_usd"] == "0.035"
+
+
+def test_classification_prompt_gives_live_model_the_shared_contract() -> None:
+    provider = Mock()
+    provider.generate.return_value = ProviderResponse(
+        '{"category":"cards_payments","model_severity":2,'
+        '"evidence":[{"start":0,"end":10,"quote":"My debit c"}],'
+        '"decision_summary":"The complaint is about a debit."}',
+        "recording-model",
+    )
+    agent = ClassificationAgent(provider)
+    agent.run(
+        AnalysisRequest(
+            complaint_text="My debit card was charged twice.",
+            synthetic=True,
+        ),
+        ModelDecision(
+            stage=Stage.CLASSIFICATION,
+            model="recording-model",
+            policy_version="test-policy",
+            reason="test",
+        ),
+    )
+
+    system_prompt = provider.generate.call_args.args[2]
+    assert "cards_payments" in system_prompt
+    assert "discrimination" in system_prompt
+    assert "model_severity" in system_prompt
+    assert "end is exclusive" in system_prompt
+
+
+def test_generation_trace_attributes_include_served_model_and_usage() -> None:
+    span = Mock()
+
+    _record_generation_attributes(
+        span,
+        ProviderResponse(
+            "{}",
+            "actual-served-model",
+            input_tokens=31,
+            output_tokens=12,
+        ),
+    )
+
+    assert [call.args for call in span.set_attribute.call_args_list] == [
+        ("gen_ai.request.attempt_count", 1),
+        ("gen_ai.response.model", "actual-served-model"),
+        ("gen_ai.usage.input_tokens", 31),
+        ("gen_ai.usage.output_tokens", 12),
+    ]
+
+
+def test_live_input_bucket_thresholds_are_applied() -> None:
+    assert (
+        _input_bucket("x" * 100, short_max=100, medium_max=200) is InputSizeBucket.SHORT
+    )
+    assert (
+        _input_bucket("x" * 101, short_max=100, medium_max=200)
+        is InputSizeBucket.MEDIUM
+    )
+    assert (
+        _input_bucket("x" * 201, short_max=100, medium_max=200) is InputSizeBucket.LONG
+    )
 
 
 def test_invalid_input_and_invalid_classification_have_no_drafting_call(

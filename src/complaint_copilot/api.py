@@ -169,6 +169,15 @@ def create_app(
         policy=policy,
         model_policy_version=policy.policy_version,
         run_mode=RunMode.FIXTURE if config.mode == "fixture" else RunMode.DEMO,
+        short_input_max=(
+            config.short_input_max if config.short_input_max is not None else 2_000
+        ),
+        medium_input_max=(
+            config.medium_input_max if config.medium_input_max is not None else 8_000
+        ),
+        live_rate_ceiling=(
+            config.live_max_usd_per_1k_tokens if config.mode == "live" else None
+        ),
     )
 
     @asynccontextmanager
@@ -268,6 +277,11 @@ def create_app(
             str, Header(alias="Idempotency-Key", min_length=1, max_length=200)
         ],
     ) -> dict[str, object]:
+        if config.mode == "live" and body.source_sample_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="source_sample_id fixture controls are unavailable in live mode",
+            )
         try:
             if config.mode == "live":
                 if config.live_approval_id is None or config.live_max_requests is None:
@@ -421,6 +435,11 @@ def create_app(
 
     @app.post("/api/baseline")
     def baseline(body: IntakeBody) -> dict[str, object]:
+        if config.mode == "live" and body.source_sample_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="source_sample_id fixture controls are unavailable in live mode",
+            )
         request_key = f"baseline:{secrets.token_urlsafe(18)}"
         if config.mode == "live":
             if config.live_approval_id is None or config.live_max_requests is None:

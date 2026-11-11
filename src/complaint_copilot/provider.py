@@ -5,7 +5,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Protocol
@@ -23,6 +23,11 @@ class ProviderResponse:
     input_tokens: int | None = None
     output_tokens: int | None = None
     provider_cached_input_tokens: int | None = None
+    attempts: int = 1
+
+    def __post_init__(self) -> None:
+        if type(self.attempts) is not int or self.attempts < 1:
+            raise ValueError("provider response attempts must be a positive integer")
 
 
 class ProviderFailure(RuntimeError):
@@ -33,6 +38,7 @@ class ProviderFailure(RuntimeError):
         self.code = code
         self.retryable = retryable
         self.usage = usage
+        self.attempts = 1
 
 
 class Provider(Protocol):
@@ -219,8 +225,12 @@ class RetryingProvider:
     ) -> ProviderResponse:
         for attempt in range(1, self._max_attempts + 1):
             try:
-                return self._provider.generate(stage, model, system_prompt, user_prompt)
+                response = self._provider.generate(
+                    stage, model, system_prompt, user_prompt
+                )
+                return replace(response, attempts=attempt)
             except ProviderFailure as error:
+                error.attempts = attempt
                 if not error.retryable or attempt == self._max_attempts:
                     raise
                 self._sleep(min(0.1 * (2 ** (attempt - 1)), 0.5))
