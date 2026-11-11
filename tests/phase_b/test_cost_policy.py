@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 
+from complaint_copilot.contracts import TokenUsage
 from complaint_copilot.cost import (
     CostError,
     aggregate_by_stage_and_model,
@@ -10,7 +11,6 @@ from complaint_copilot.cost import (
     detect_anomaly,
     stage_cost_observation,
 )
-from complaint_copilot.contracts import TokenUsage
 
 
 def test_calculate_usage_cost_adds_input_output_and_cached_tokens() -> None:
@@ -105,5 +105,14 @@ def test_detect_anomaly_flags_cost_spikes_over_baseline() -> None:
 
 
 def test_detect_anomaly_ignores_empty_or_zero_baselines() -> None:
-    assert detect_anomaly([Decimal("10")], baseline=[], multiplier=Decimal("3")) is False
-    assert detect_anomaly([Decimal("10")], baseline=[Decimal("0"), Decimal("0")], multiplier=Decimal("3")) is False
+    assert (
+        detect_anomaly([Decimal("10")], baseline=[], multiplier=Decimal("3")) is False
+    )
+    assert (
+        detect_anomaly(
+            [Decimal("10")],
+            baseline=[Decimal("0"), Decimal("0")],
+            multiplier=Decimal("3"),
+        )
+        is False
+    )

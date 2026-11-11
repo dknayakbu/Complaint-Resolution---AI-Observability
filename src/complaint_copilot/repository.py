@@ -759,6 +759,8 @@ class SQLiteRepository:
         ).fetchone()
         if row is None:
             raise RecordNotFound("case not found")
+        if not isinstance(row, sqlite3.Row):
+            raise RepositoryError("case query returned an unexpected row type")
         return row
 
     def _assert_processing_revision(
