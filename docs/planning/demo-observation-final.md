@@ -65,9 +65,12 @@ harm, draft a response, and show why a specialist reviewed it?
      show workload and whether analyses completed or needed manual handling.
      **Classification and drafting stages** shows the two processing steps;
      **Average stage duration (5 minutes)** compares their recent timings.
+     **Complaint categories - count and trend** shows the agent's predicted
+     categories as cumulative lines, with the latest counts in the legend.
      Use the UI's reviewer queue for pending cases and Jaeger for an individual
      call's timing. Counters reset when the API restarts.
-   - **Safety and Quality:** **Cases with a safety flag** counts cases with a
+   - **Safety and Quality:** **Complaint severity - count and trend** shows
+     SEV1, SEV2 and SEV3 after safeguards. **Cases with a safety flag** counts cases with a
      covered safety flag, including cases already predicted as SEV1; it is not
      a count of proven model misses. **Human-approved simulated routes** shows
      authorized review events. To explain the specific decision, open the UI
@@ -84,6 +87,10 @@ wording is demo wording, not a claim of regulatory approval or compliance.
 Dashboard legends show **Live model** and **Scripted test** for the two
 workflow modes. In Prometheus, live analysis and review events use different
 internal labels (`run_mode=demo` and `run_mode=live`, respectively).
+The new severity and category counters include saved classifications even if
+drafting later fails; they exclude failed classifications and reviewer
+corrections. They do not backfill older cases and can reset on API restart.
+Each line appears after that category or severity is first observed.
 
 ## Observation 2: quality, drift and incident signals in context
 
