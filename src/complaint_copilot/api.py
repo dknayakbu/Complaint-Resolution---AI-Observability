@@ -580,11 +580,6 @@ def create_app(
         internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
     ) -> dict[str, object]:
         _require_internal(internal_token, config.internal_token)
-        if config.mode != "fixture":
-            raise HTTPException(
-                status_code=409,
-                detail="synthetic replay is available only in fixture mode",
-            )
         try:
             if scenario == "drift":
                 output = replay_drift(app.state.data_root)
@@ -607,7 +602,8 @@ def create_app(
         except (OSError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         if created:
-            _record_replay_metrics(scenario, output)
+            run_mode = RunMode.DEMO if config.mode == "live" else RunMode.FIXTURE
+            _record_replay_metrics(scenario, output, run_mode=run_mode)
             flush_telemetry()
         return {**stored_result, "duplicate": not created}
 
@@ -710,8 +706,10 @@ def _pending_candidate(
     return None
 
 
-def _record_replay_metrics(scenario: str, result: Mapping[str, object]) -> None:
-    labels = {"run_mode": "fixture", "replay": scenario}
+def _record_replay_metrics(
+    scenario: str, result: Mapping[str, object], *, run_mode: RunMode
+) -> None:
+    labels = {"run_mode": run_mode.value, "replay": scenario}
     if scenario == "drift":
         scores = result.get("window_scores_base2_jsd")
         if isinstance(scores, list):

@@ -14,6 +14,7 @@ import streamlit as st
 API_URL = os.getenv("COPILOT_API_URL", "http://localhost:8000").rstrip("/")
 REVIEWER_TOKEN = os.getenv("REVIEWER_TOKEN", "fixture-reviewer-token")
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "fixture-internal-token")
+API_REQUEST_TIMEOUT_SECONDS = 420
 
 
 def _request(
@@ -35,7 +36,9 @@ def _request(
         method=method,
     )
     try:
-        with urllib.request.urlopen(request, timeout=5) as response:
+        with urllib.request.urlopen(
+            request, timeout=API_REQUEST_TIMEOUT_SECONDS
+        ) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")

@@ -131,8 +131,11 @@ change the steps or retry setting.
 ### 7. Run the synthetic operations and quality replays
 
 1. Open **Synthetic replays** and run `drift`, `cost`, `quality`, and `slo` one
-   at a time.
-2. **Expected result:** each response reports a synthetic calculation:
+   at a time. These internal, deterministic replays are available in both
+   fixture and live mode; they never call the configured model or consume the
+   live provider-call budget.
+2. **Expected result:** each response reports a synthetic calculation, and
+   live-mode replay metrics are tagged `run_mode=demo`:
    - Drift returns window scores and shift-warning status.
    - Cost returns a threshold crossing and replay total, not a provider bill.
    - Quality separates the scripted Q0 result from the controlled Q1

@@ -609,3 +609,44 @@ def test_replay_route_persists_idempotency_and_returns_real_cost_computation(
         assert first.json()["cumulative_cost_usd"] == "0.280"
         assert first.json()["duplicate"] is False
         assert second.json()["duplicate"] is True
+
+
+def test_synthetic_replay_is_available_during_live_mode_without_provider_calls(
+    tmp_path: Path,
+) -> None:
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-demo.sqlite3",
+        model="fixture-model",
+        openai_api_key="test-key-not-used",
+        reviewer_token="test-reviewer-token",
+        internal_token="test-internal-token",
+        live_model_approved=True,
+        live_approval_id="test-approval",
+        live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=1000,
+        live_max_cost_usd=Decimal("1"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+        short_input_max=2000,
+        medium_input_max=8000,
+    )
+    provider = FixtureProvider()
+    app = create_app(
+        settings,
+        repository=SQLiteRepository(tmp_path / "live-demo.sqlite3"),
+        provider=provider,
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/internal/demo/replay/cost",
+            headers={
+                "X-Internal-Token": "test-internal-token",
+                "Idempotency-Key": "live-cost-replay",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["cumulative_cost_usd"] == "0.280"
+    assert provider.calls == []
