@@ -1,0 +1,194 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: complaint-local-inbox
+    receivers:
+      - uid: complaint-local-webhook
+        type: webhook
+        settings:
+          url: http://api:8000/internal/alerts
+          httpMethod: POST
+          username: grafana-alerting
+          password: $INTERNAL_TOKEN
+
+policies:
+  - orgId: 1
+    receiver: complaint-local-inbox
+    group_by:
+      - alertname
+      - incident_priority
+    group_wait: 0s
+    group_interval: 10s
+    repeat_interval: 1h
+
+groups:
+  - orgId: 1
+    name: complaint-operational-alerts
+    folder: Complaint Co-Pilot
+    interval: 10s
+    rules:
+      - uid: complaint-terminal-failure
+        title: Complaint workflow terminal failure
+        condition: A
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          incident_priority: P1
+          team: complaint-copilot
+        annotations:
+          summary: A valid synthetic complaint ended in manual-required processing.
+          runbook_url: file://docs/runbooks/synthetic-incident.md
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: sum(increase(complaint_slo_outcomes_total{outcome="bad"}[2m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+                  type: query
+      - uid: complaint-telemetry-scrape-down
+        title: Complaint telemetry scrape unavailable
+        condition: A
+        for: 10s
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          incident_priority: P2
+          team: complaint-copilot
+        annotations:
+          summary: Prometheus cannot scrape the OpenTelemetry collector.
+          runbook_url: file://docs/runbooks/synthetic-incident.md
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: up{job="otel-exporter"} < 1
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+                  type: query
+      - uid: complaint-input-drift-warning
+        title: Synthetic complaint input drift warning
+        condition: A
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          incident_priority: P3
+          team: complaint-copilot
+        annotations:
+          summary: The synthetic input distribution crossed its configured drift threshold.
+          runbook_url: file://docs/runbooks/synthetic-incident.md
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: sum(increase(complaint_drift_warnings_total[5m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+                  type: query
+      - uid: complaint-cost-anomaly
+        title: Synthetic estimated cost anomaly
+        condition: A
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          incident_priority: P2
+          team: complaint-copilot
+        annotations:
+          summary: The comparable synthetic estimated-cost window crossed its threshold.
+          runbook_url: file://docs/runbooks/synthetic-incident.md
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: sum(increase(complaint_cost_anomaly_events_total[5m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    type: last
+                  type: query

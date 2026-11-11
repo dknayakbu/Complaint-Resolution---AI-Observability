@@ -16,16 +16,27 @@ Do not include chain-of-thought or ground-truth labels."""
 
 
 class ClassificationAgent:
-    def __init__(self, provider: Provider) -> None:
+    def __init__(
+        self, provider: Provider, *, include_fixture_metadata: bool = False
+    ) -> None:
         self._provider = provider
+        self._include_fixture_metadata = include_fixture_metadata
 
-    def run(self, request: AnalysisRequest, decision: ModelDecision) -> ProviderResponse:
+    def run(
+        self, request: AnalysisRequest, decision: ModelDecision
+    ) -> ProviderResponse:
         if decision.stage is not Stage.CLASSIFICATION:
             raise ValueError("classification agent requires a classification decision")
         prompt = json.dumps(
             {
                 "complaint_text": request.complaint_text,
                 "synthetic": request.synthetic,
+                **(
+                    {"source_sample_id": request.source_sample_id}
+                    if self._include_fixture_metadata
+                    and request.source_sample_id is not None
+                    else {}
+                ),
                 "output_fields": [
                     "category",
                     "model_severity",

@@ -1,10 +1,70 @@
 # Complaint Resolution Co-Pilot - Demo Story and Evidence Plan
 
+## Local command flow and verified demo coverage
+
+The verified local flow is fixture-only. Run from the repository root in
+PowerShell:
+
+1. `uv sync --frozen` installs the locked project environment; it makes no
+   provider calls.
+2. `docker compose config --quiet` validates service configuration.
+3. Start and readiness-check the services in dependency order: Jaeger
+   (`http://localhost:16686/`), OpenTelemetry Collector
+   (`http://localhost:8888/metrics` and `http://localhost:8889/metrics`),
+   Prometheus (`http://localhost:9090/-/ready`), Grafana
+   (`http://localhost:3000/api/health`), API
+   (`http://localhost:8000/health` and `/api/mode`), then Streamlit
+   (`http://localhost:8501/_stcore/health`). Copy/paste commands are in the
+   root [README](../../README.md).
+4. `uv run python scripts\demo_rehearsal.py` exercises the one-call baseline;
+   normal two-stage workflow; reviewer-gated simulated queue; controlled
+   model-SEV3/effective-SEV1 safeguard; revision-linked feedback and
+   adjudication; positive/negated/injection inputs; idempotent local alert
+   inbox; a deterministic provider-timeout containment/recovery; automatic
+   Grafana firing/resolved webhook delivery; drift, cost, quality and SLO
+   replays; application trace export; Prometheus targets; and provisioned
+   Grafana dashboards.
+5. `uv run pytest -q`, `uv run ruff check .`,
+   `uv run ruff format --check .`, and `uv run mypy src` run the repository
+   gates. The synthetic fixture suite does not call external model services.
+
+**Verified local result (2026-11-11):** the complete rehearsal passed against
+the running Compose stack. It observed application traces in Jaeger, both
+Prometheus scrape jobs healthy, and all three provisioned dashboards. It
+exercised the one-call baseline, authorized simulated routing, feedback and
+adjudication, plus a controlled fixture provider timeout that remained
+manual-required with no draft or queue entry. Grafana sent P1 workflow-failure,
+P2 estimated-cost, and P3 input-drift alerts to the authenticated local inbox;
+the P1 alert's firing and resolved events were both recorded. The SLI endpoint
+reported a complete latest-30 fixture window (25 good, 5 manual-required) at
+the final snapshot; this is synthetic history and does not establish a 99%
+SLO. The UI and API health endpoints returned `ok`.
+
+All tests passed (95 tests); Ruff lint, Ruff formatting, mypy, Compose
+validation, dashboard JSON and alert YAML parsing passed. One
+Starlette/httpx deprecation warning was emitted by the test client.
+
+Observed replay values were drift JSD scores **0.2672** and **0.5932**; the
+synthetic cost anomaly crossed on spike observation **6** with **USD 0.280**
+replay total (not an invoice). Q0 scripted fixture-provider raw/effective SEV1
+recall measured **0.0/0.5**. Separate Q1 controlled label-derived arithmetic
+recall is **0.75/0.9167**; Q1 is not a model comparison. Drift scores are
+actual extractor results, not the planning estimates. Quality labels are
+synthetic, not independently adjudicated ground truth.
+
+**Not demonstrated:** a genuine OpenAI request or the main story's live-model
+requirement; an independently selected blind incident; external paging; or a
+production-calibrated SLO/model-quality comparison. The verified incident is a
+known deterministic fixture fault, not an organic provider outage. Therefore
+this is a verified local synthetic journey, not a claim that the full live
+demo or every Scene 0-6 acceptance criterion is complete. Live OpenAI use
+remains unapproved and was not attempted.
+
 ## 1. Purpose, scope and honesty rules
 
 **Audience outcome:** reviewers can see a complaint handled, understand why a dangerous classification matters, observe a changing workload, and watch the team detect, diagnose and recover from an incident using its own tooling.
 
-This is a separate demonstration plan, not an implementation, test report or production-readiness claim. It complements [the implementation plan](plan.md), [shared contracts](shared-contract-v1.md) and [the planning-pack README](README.md). The target application's current implementation, actual metrics and failure-code enum have not been inspected here.
+This is a demonstration plan, not an implementation or production-readiness claim. The current repository verification is summarized at the top; it does not establish readiness for the full story. The plan complements [the implementation plan](plan.md), [shared contracts](shared-contract-v1.md) and [the planning-pack README](README.md).
 
 Confirmed demonstration approach:
 
@@ -12,7 +72,7 @@ Confirmed demonstration approach:
 - Clearly labeled synthetic workload/result replay for reproducible trends, statistical calculations and incident signals.
 - A coherent primary story, with a complete functionality/rehearsal matrix for secondary cases.
 - Synthetic data only, simulated queues only, human approval before release/routing.
-- No paid runs, data generation, containers or application changes are authorized or executed by this document.
+- Live/paid provider calls, demo-data generation and application feature changes require separate authorization. The current local container smoke test is summarized at the top.
 
 ### Critical distinctions
 
@@ -62,11 +122,18 @@ Use the existing planned dashboards, not a new visualization platform:
 2. **Safety and Quality:** raw/effective SEV1 quality, label coverage, corrections, wording and annotation backlog.
 3. **Drift and Incident:** input mix/JSD/sample eligibility, cost anomaly, SLI/budget and active/resolved incidents.
 
-These are panel requirements, not claims that the dashboards already exist. Move panels between the three dashboards if readability improves; do not add infrastructure for layout alone.
+The three dashboards are provisioned in `observability/grafana/dashboards/`.
+They currently show a focused subset of the panel requirements; panels not
+implemented in the provisioned JSON remain requirements, not verified evidence.
+Move panels between the three dashboards if readability improves; do not add
+infrastructure for layout alone.
 
 ### Panel contract and expected movement
 
-Metric families below come from the plan. Person B must map them to the **actual exported names, label names and instrument types**, including any OTel-to-Prometheus translation, before rehearsal.
+The table below is the intended metric contract. Some names are exported and
+queried by the current dashboards, while others still require implementation
+and verification. Do not treat a planned metric as present merely because it
+appears here.
 
 | Panel | Source / calculation | Visible change to demonstrate | Safeguard against a misleading display |
 | --- | --- | --- | --- |
@@ -83,7 +150,7 @@ Metric families below come from the plan. Person B must map them to the **actual
 | JSD and eligibility | `complaint_drift_js_divergence`, sample count | First eligible high window -> second high window -> shift warning -> recovery | Low sample is ineligible, not 0/healthy |
 | Comparable cost ratio | `complaint_cost_anomaly_ratio`, sample count | Ratio near 1 -> above 3 -> back near 1 | Same policy/prompt/input bucket and price basis; warmup is not healthy |
 | Operational SLI/budget | Persisted latest-30 eligible outcome status; good/bad/unknown counters for history | 30 good -> 29 good/1 bad -> 30 good | Rolling state and lifetime counters are different; do not calculate rolling budget from all-time counters |
-| Alert/incident state | Grafana rules -> authenticated webhook -> SQLite inbox | Pending/firing -> acknowledged/contained -> resolved | Acknowledging an incident does not make the signal healthy |
+| Alert/incident state | Provisioned Grafana rules -> authenticated local webhook -> SQLite inbox | Workflow failure, drift and cost signals fire; terminal-failure firing/resolution is recorded | Fixture fault and local paging only; no independent blind incident or external notification |
 | Export health | Scrape/export health and last-observation timestamps | Healthy -> stale/down -> fresh recovery | Missing telemetry is unknown/unavailable, never a green zero |
 
 ### Make trends actually visible
@@ -103,7 +170,10 @@ Metric families below come from the plan. Person B must map them to the **actual
 
 No real names, account/card numbers, email addresses, transaction histories, bank integrations or customer records are required. Complaint text can mention invented amounts such as GBP 85. The model must not be given an answer key.
 
-Proposed paths are in the **new target project**. They are implementation deliverables, not files created by this planning request.
+The repository already contains synthetic showcase, holdout, baseline, and drift
+records under `data/`. The remaining packs in the table are planning
+requirements; their presence, provenance, and acceptance status must be checked
+individually rather than inferred from the existing files.
 
 | Pack | Minimum contents | Purpose / owner |
 | --- | --- | --- |
@@ -408,7 +478,11 @@ Do not have the same presenter narrate every action while others watch. Cross-tr
 - Confirm rule population, min samples, pending/resolve semantics, priority mapping and actual webhook path/authentication.
 - Perform bounded preflight alert delivery and resolve it; keep evidence separately from presentation data.
 - Verify real-provider credentials without printing them; obtain approval for a bounded smoke call if needed.
-- Record actual supported commands in a run sheet. This plan intentionally does not invent CLI flags/endpoints that the target implementation may not provide.
+- The supported local fixture command is `uv run python scripts\demo_rehearsal.py`.
+  It exercises the available API endpoints and validates trace, scrape-target,
+  and dashboard visibility. It does not activate faults, deliver Grafana
+  notifications, or replace a genuine live-model request. Do not copy planned
+  but unimplemented CLI flags/endpoints into a run sheet.
 
 ### Isolation and reset
 
@@ -452,7 +526,7 @@ All tasks extend the three planned workstreams and integrate through existing co
 | Owner | Required preparation |
 | --- | --- |
 | A | Safe fault adapter, explicit evidence modes, case/revision-specific actions, review/adjudication flow, scoped synthetic reset/import, restricted evidence and manifest command mapping |
-| B | Actual metric mapping, three readable dashboards, denominator/unknown/sample panels, real Grafana firing/resolved delivery, cost/SLI fixture export and runbook/postmortem evidence |
+| B | Expand metric mapping and denominator/unknown panels; calibrate SLOs; retain incident evidence and improve runbook/postmortem coverage |
 | C | Raw/label-separated packs, feature-count fixtures, known quality response sets, annotation merger and evaluator checks, human rubric/adjudication manifest |
 | Joint integration | Preflight, replay pacing, real-model bounded request, blind incident selector, recovery proof and retained evidence |
 
@@ -460,7 +534,12 @@ Do not add another service, response cache, event bus, multi-agent framework, CI
 
 ### Test-first acceptance gates
 
-Proposed new tests below belong in the target application and are **not implemented or executed here**. Reuse existing tests if they already prove the boundary.
+The following matrix remains the broader planning acceptance list; it is not a
+claim that every proposed test exists. Current automated coverage is in
+`tests/contracts`, `tests/phase_a`, `tests/phase_b`, `tests/phase_c`, and
+`tests/demo`; the local rehearsal command is documented above. The rehearsal
+has verified automatic Grafana firing/resolution to the local webhook inbox.
+The independently selected blind-incident journey remains unimplemented.
 
 | First red test / level | Fixture and assertion | Green boundary / focused proposed command |
 | --- | --- | --- |
@@ -472,9 +551,12 @@ Proposed new tests below belong in the target application and are **not implemen
 | `test_feedback_then_adjudication_is_revision_safe`, integration | Scene 2/3; two signal reasons, one item, no label before authorized action | Existing review/annotation transaction; `uv run pytest tests\demo\test_feedback_story.py -q` |
 | `test_timeout_retains_classifier_and_requires_manual`, component | Fake drafting timeout, bounded attempts, code from merged enum, no route | Existing fault adapter/workflow; `uv run pytest tests\demo\test_incident_story.py -q` |
 | `test_slo_recovery_needs_window_replacement`, unit | 30 good -> 1 bad -> 30 good; burn/allowance and recovery as declared | Existing SLI logic; same incident-story file |
-| `test_alert_firing_dedup_escalation_and_resolve`, local-stack | Grafana -> real webhook -> persisted episode; no duplicated incident, no lost escalation | Actual provisioned rule/inbox; `uv run pytest tests\e2e\test_demo_alerts.py -q` |
+| Grafana rule-to-inbox rehearsal, local-stack | Controlled provider failure -> Grafana P1 firing/resolved -> persisted episode events | `uv run python scripts\demo_rehearsal.py` |
 
-Run focused deterministic tests red, implement the smallest missing boundary, rerun green, then integrate. The real local-stack test needs the isolated stack running and bounded cleanup. Exact commands must be reconciled with the implemented project before copying them into a run sheet.
+Run focused deterministic tests red, implement the smallest missing boundary,
+rerun green, then integrate. The real local-stack alert-delivery path is
+verified; the scripted direct-inbox test remains a separate idempotency check
+and is not substituted for Grafana-to-webhook delivery.
 
 Broader gate after focused tests: existing contract/full non-live test suite, Ruff/mypy, Compose validation, then G1-G3 integration from the main plan. Only then separately approve and perform live-model checks. A successful replay is not a substitute for the genuine normal-request requirement.
 
@@ -502,3 +584,11 @@ The demo is ready when:
 8. Six members drive visible parts and can explain limitations.
 
 **Residual risks:** synthetic labels/traffic are not representative production data; small samples do not prove safety/availability; tone and provider outputs vary; real billing may be incomplete on failures; a laptop stack is not highly available; regulatory wording/timelines still need the agreed facilitator/policy approval. Report these honestly.
+
+**Current implementation status:** the local synthetic fixture journey and
+repository checks described at the top are verified. The demo is not ready to
+claim the full planned success criteria until a separately approved live
+two-stage request and an independently selected blind
+incident/containment/recovery rehearsal are demonstrated and retained as
+evidence. Automatic Grafana alert delivery is verified locally but does not
+provide an external paging channel.

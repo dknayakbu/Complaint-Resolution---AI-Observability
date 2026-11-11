@@ -49,7 +49,14 @@ _FINANCIAL_NEGATION = re.compile(
     re.IGNORECASE,
 )
 _NO_FINANCIAL_HARM = re.compile(
-    r"\bno (?:financial harm|money (?:was )?lost|funds (?:were )?lost)\b",
+    r"\bno (?:immediate )?(?:financial harm|money (?:was )?lost|"
+    r"funds (?:were )?lost)\b",
+    re.IGNORECASE,
+)
+_LOSS_OF_ESSENTIAL_FUNDS = re.compile(
+    r"\b(?:cannot|can't|unable to)\b(?:\W+\w+){0,8}\W+"
+    r"(?:money|funds|cash)\b.{0,40}\b(?:food|rent|medicine|essentials?)\b"
+    r"|\bimmediate financial harm\b",
     re.IGNORECASE,
 )
 _DISCRIMINATION = re.compile(
@@ -92,10 +99,12 @@ def apply_safeguards(
     signals: list[str] = []
     financial_harm = any(
         pattern.search(complaint_text) for pattern in _FINANCIAL_HARM_PATTERNS
-    )
-    if financial_harm and not _FINANCIAL_NEGATION.search(
-        complaint_text
-    ) and not _NO_FINANCIAL_HARM.search(complaint_text):
+    ) or bool(_LOSS_OF_ESSENTIAL_FUNDS.search(complaint_text))
+    if (
+        financial_harm
+        and not _FINANCIAL_NEGATION.search(complaint_text)
+        and not _NO_FINANCIAL_HARM.search(complaint_text)
+    ):
         signals.append("financial_harm_signal")
 
     discrimination = bool(_DISCRIMINATION.search(complaint_text))

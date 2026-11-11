@@ -6,9 +6,11 @@ from complaint_copilot.contracts import ModelDecision, Stage
 
 
 class FixedModelPolicy:
-    """Uses one explicitly configured model for every stage; never routes by severity."""
+    """Use one explicitly configured model for every stage."""
 
-    def __init__(self, model: str, policy_version: str = "fixed-model-policy-v1") -> None:
+    def __init__(
+        self, model: str, policy_version: str = "fixed-model-policy-v1"
+    ) -> None:
         if not model.strip() or not policy_version.strip():
             raise ValueError("model and policy version must be non-empty")
         self._model = model

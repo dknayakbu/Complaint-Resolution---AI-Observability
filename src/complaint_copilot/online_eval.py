@@ -28,7 +28,8 @@ class OnlineRuleEvaluator:
         result: AnalysisResult,
         policy_context: Mapping[str, object],
     ) -> EvaluationResult:
-        signals = list(policy_context.get("policy_flags", ()))
+        raw_signals = policy_context.get("policy_flags", ())
+        signals = list(raw_signals) if isinstance(raw_signals, (list, tuple)) else []
         if result.classification is None or result.effective_severity is None:
             return EvaluationResult(
                 schema_version=1,
@@ -36,16 +37,16 @@ class OnlineRuleEvaluator:
                 analysis_id=result.analysis_id,
                 analysis_revision=result.analysis_revision,
                 evaluator_version=self.evaluator_version,
-                rubric_version=str(policy_context.get("rubric_version", "policy-rubric-v1")),
+                rubric_version=str(
+                    policy_context.get("rubric_version", "policy-rubric-v1")
+                ),
                 source=EvaluationSource.ONLINE_RULE,
                 status=EvaluationStatus.UNKNOWN,
                 findings=(
                     "classification_missing",
                     "online_rule_requires_label_for_quality_assertion",
                 ),
-                scores=(
-                    EvaluationScore(name="policy_coverage", value=None),
-                ),
+                scores=(EvaluationScore(name="policy_coverage", value=None),),
                 reason_code="no_label_available",
             )
 
@@ -53,20 +54,22 @@ class OnlineRuleEvaluator:
         if signals:
             findings.extend(f"policy_flag:{signal}" for signal in signals)
 
-        if not policy_context.get("expected_category") and not policy_context.get("expected_severity"):
+        if not policy_context.get("expected_category") and not policy_context.get(
+            "expected_severity"
+        ):
             return EvaluationResult(
                 schema_version=1,
                 case_id=result.case_id,
                 analysis_id=result.analysis_id,
                 analysis_revision=result.analysis_revision,
                 evaluator_version=self.evaluator_version,
-                rubric_version=str(policy_context.get("rubric_version", "policy-rubric-v1")),
+                rubric_version=str(
+                    policy_context.get("rubric_version", "policy-rubric-v1")
+                ),
                 source=EvaluationSource.ONLINE_RULE,
                 status=EvaluationStatus.UNKNOWN,
                 findings=tuple(findings),
-                scores=(
-                    EvaluationScore(name="policy_coverage", value=None),
-                ),
+                scores=(EvaluationScore(name="policy_coverage", value=None),),
                 reason_code="no_label_available",
             )
 
@@ -85,12 +88,12 @@ class OnlineRuleEvaluator:
             analysis_id=result.analysis_id,
             analysis_revision=result.analysis_revision,
             evaluator_version=self.evaluator_version,
-            rubric_version=str(policy_context.get("rubric_version", "policy-rubric-v1")),
+            rubric_version=str(
+                policy_context.get("rubric_version", "policy-rubric-v1")
+            ),
             source=EvaluationSource.ONLINE_RULE,
             status=status,
             findings=tuple(findings),
-            scores=(
-                EvaluationScore(name="policy_coverage", value=None),
-            ),
+            scores=(EvaluationScore(name="policy_coverage", value=None),),
             reason_code=reason_code,
         )

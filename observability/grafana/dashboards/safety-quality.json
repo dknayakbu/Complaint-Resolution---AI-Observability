@@ -1,0 +1,44 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "targets": [{"expr": "sum by (run_mode, policy_flag) (complaint_safety_promotions_total)", "refId": "A"}],
+      "title": "Safeguard Promotions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "targets": [{"expr": "sum by (run_mode, outcome) (complaint_reviews_total)", "refId": "A"}],
+      "title": "Human Reviews",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "jaeger", "uid": "jaeger"},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
+      "id": 3,
+      "options": {"query": {"queryType": "search", "service": "complaint-copilot-api"}, "serviceMap": {"datasourceUid": "prometheus"}},
+      "title": "Application Traces",
+      "type": "traces"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["synthetic", "safety"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "Safety and Quality",
+  "uid": "safety-quality",
+  "version": 1
+}

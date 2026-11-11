@@ -99,4 +99,3 @@ def test_startup_recovery_marks_interrupted_case_manual_required(
     assert case["state"] == "manual_required"
     assert case["failure_code"] == "process_interrupted"
     assert case["analyses"][0]["status"] == "manual_required"
-

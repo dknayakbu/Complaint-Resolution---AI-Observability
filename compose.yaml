@@ -1,33 +1,100 @@
 services:
+  api:
+    build: .
+    environment:
+      APP_MODE: ${APP_MODE:-fixture}
+      DATABASE_PATH: /app/var/demo.sqlite3
+      MODEL_NAME: ${MODEL_NAME:-gpt-4.1-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      REVIEWER_TOKEN: ${REVIEWER_TOKEN:-fixture-reviewer-token}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-fixture-internal-token}
+      PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-20}
+      PROVIDER_MAX_ATTEMPTS: ${PROVIDER_MAX_ATTEMPTS:-2}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: complaint-copilot-api
+      OTEL_METRIC_EXPORT_INTERVAL_MS: ${OTEL_METRIC_EXPORT_INTERVAL_MS:-5000}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - demo-data:/app/var
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  ui:
+    build: .
+    command:
+      - streamlit
+      - run
+      - src/complaint_copilot/ui.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+    environment:
+      COPILOT_API_URL: http://api:8000
+      REVIEWER_TOKEN: ${REVIEWER_TOKEN:-fixture-reviewer-token}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-fixture-internal-token}
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+
   otel-collector:
     image: otel/opentelemetry-collector:0.108.0
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./observability/otel-collector.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "4318:4318"
-      - "4317:4317"
-      - "8888:8888"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:8889:8889"
+    depends_on:
+      jaeger:
+        condition: service_started
 
   jaeger:
-    image: jaegertracing/all-in-one:1.63
+    image: jaegertracing/all-in-one:1.63.0
     ports:
-      - "16686:16686"
+      - "127.0.0.1:16686:16686"
 
   prometheus:
     image: prom/prometheus:v2.54.1
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      otel-collector:
+        condition: service_started
 
   grafana:
     image: grafana/grafana:11.2.0
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     environment:
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-fixture-internal-token}
     depends_on:
       - prometheus
       - jaeger
+
+volumes:
+  demo-data:
+  grafana-data:

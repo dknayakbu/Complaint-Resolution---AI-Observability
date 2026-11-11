@@ -43,6 +43,10 @@ class InvalidCaseState(RepositoryError):
     pass
 
 
+class LiveBudgetExhausted(RepositoryError):
+    pass
+
+
 def to_wire(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -51,7 +55,9 @@ def to_wire(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat().replace("+00:00", "Z")
     if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: to_wire(getattr(value, field.name)) for field in fields(value)}
+        return {
+            field.name: to_wire(getattr(value, field.name)) for field in fields(value)
+        }
     if isinstance(value, Mapping):
         return {str(key): to_wire(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
@@ -107,22 +113,103 @@ class SQLiteRepository:
             connection.close()
 
     def migrate(self) -> None:
-        migration_path = Path(__file__).with_name("migrations") / "001_initial.sql"
-        script = migration_path.read_text(encoding="utf-8")
+        migration_dir = Path(__file__).with_name("migrations")
         with self._connection() as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations "
                 "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
             )
-            applied = connection.execute(
-                "SELECT 1 FROM schema_migrations WHERE version = 1"
+            for version, filename in (
+                (1, "001_initial.sql"),
+                (2, "002_demo_replays.sql"),
+                (3, "003_live_run_budget.sql"),
+            ):
+                applied = connection.execute(
+                    "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
+                ).fetchone()
+                if applied is None:
+                    connection.executescript(
+                        (migration_dir / filename).read_text(encoding="utf-8")
+                    )
+                    connection.execute(
+                        "INSERT INTO schema_migrations(version, applied_at) "
+                        "VALUES(?, ?)",
+                        (version, datetime.now().astimezone().isoformat()),
+                    )
+
+    def reserve_live_request(
+        self, *, approval_id: str, max_requests: int, request_key: str, now: datetime
+    ) -> bool:
+        if not approval_id.strip() or not request_key.strip():
+            raise ValueError("live approval ID and request key must be non-empty")
+        if type(max_requests) is not int or not 1 <= max_requests <= 10:
+            raise ValueError("live request limit must be between 1 and 10")
+        with self._transaction() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO live_run_budgets"
+                "(approval_id, max_requests, used_requests) VALUES (?, ?, 0)",
+                (approval_id, max_requests),
+            )
+            budget = connection.execute(
+                "SELECT max_requests, used_requests FROM live_run_budgets "
+                "WHERE approval_id=?",
+                (approval_id,),
             ).fetchone()
-            if applied is None:
-                connection.executescript(script)
-                connection.execute(
-                    "INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)",
-                    (datetime.now().astimezone().isoformat(),),
+            if budget is None:
+                raise RepositoryError("live request budget could not be loaded")
+            if budget["max_requests"] != max_requests:
+                raise IdempotencyConflict(
+                    "live approval ID is already bound to another request limit"
                 )
+            existing = connection.execute(
+                "SELECT 1 FROM live_request_reservations "
+                "WHERE approval_id=? AND request_key=?",
+                (approval_id, request_key),
+            ).fetchone()
+            if existing is not None:
+                return False
+            if budget["used_requests"] >= max_requests:
+                raise LiveBudgetExhausted("approved live request limit is exhausted")
+            connection.execute(
+                "INSERT INTO live_request_reservations"
+                "(approval_id, request_key, created_at) VALUES (?, ?, ?)",
+                (approval_id, request_key, to_wire(now)),
+            )
+            connection.execute(
+                "UPDATE live_run_budgets SET used_requests=used_requests+1 "
+                "WHERE approval_id=?",
+                (approval_id,),
+            )
+            return True
+
+    def store_demo_replay(
+        self,
+        *,
+        idempotency_key: str,
+        scenario: str,
+        result: Mapping[str, object],
+        now: datetime,
+    ) -> tuple[dict[str, object], bool]:
+        encoded = _json(result)
+        with self._transaction() as connection:
+            prior = connection.execute(
+                "SELECT scenario, result_json FROM demo_replay_runs "
+                "WHERE idempotency_key=?",
+                (idempotency_key,),
+            ).fetchone()
+            if prior is not None:
+                if prior["scenario"] != scenario:
+                    raise IdempotencyConflict(
+                        "replay idempotency key was already used for another scenario"
+                    )
+                return json.loads(prior["result_json"]), False
+            connection.execute(
+                "INSERT INTO demo_replay_runs"
+                "(idempotency_key, scenario, result_json, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (idempotency_key, scenario, encoded, to_wire(now)),
+            )
+        return dict(result), True
 
     def create_intake(
         self,
@@ -161,10 +248,18 @@ class SQLiteRepository:
                     state, version, current_revision, created_at, updated_at
                 ) VALUES (?, ?, ?, 1, ?, 'received', 1, 0, ?, ?)
                 """,
-                (case_id, request_id, complaint_text, source_sample_id, _json(now), _json(now)),
+                (
+                    case_id,
+                    request_id,
+                    complaint_text,
+                    source_sample_id,
+                    _json(now),
+                    _json(now),
+                ),
             )
             connection.execute(
-                "INSERT INTO idempotency_keys(scope, idempotency_key, payload_hash, resource_id) "
+                "INSERT INTO idempotency_keys("
+                "scope, idempotency_key, payload_hash, resource_id) "
                 "VALUES('intake', ?, ?, ?)",
                 (idempotency_key, fingerprint, case_id),
             )
@@ -272,7 +367,8 @@ class SQLiteRepository:
     def record_stage_event(self, event: StageUsageEvent) -> None:
         with self._transaction() as connection:
             connection.execute(
-                "INSERT INTO stage_usage_events(event_id, case_id, revision, event_json) "
+                "INSERT INTO stage_usage_events("
+                "event_id, case_id, revision, event_json) "
                 "VALUES (?, ?, ?, ?)",
                 (
                     event.event_id,
@@ -285,7 +381,8 @@ class SQLiteRepository:
     def record_completion_event(self, event: AnalysisCompletionEvent) -> None:
         with self._transaction() as connection:
             connection.execute(
-                "INSERT INTO completion_events(event_id, case_id, revision, event_json) "
+                "INSERT INTO completion_events("
+                "event_id, case_id, revision, event_json) "
                 "VALUES (?, ?, ?, ?)",
                 (
                     event.event_id,
@@ -325,7 +422,8 @@ class SQLiteRepository:
                 ),
             )
             connection.execute(
-                "UPDATE cases SET state=?, version=version+1, updated_at=?, failure_code=? "
+                "UPDATE cases SET state=?, version=version+1, updated_at=?, "
+                "failure_code=? "
                 "WHERE case_id=?",
                 (
                     state,
@@ -366,7 +464,8 @@ class SQLiteRepository:
         with self._transaction() as connection:
             self._assert_processing_revision(connection, case_id, revision)
             connection.execute(
-                "UPDATE analysis_revisions SET status='manual_required', failure_code=? "
+                "UPDATE analysis_revisions SET status='manual_required', "
+                "failure_code=? "
                 "WHERE case_id=? AND revision=?",
                 (failure_code, case_id, revision),
             )
@@ -437,13 +536,18 @@ class SQLiteRepository:
             if case["state"] != "awaiting_review":
                 raise InvalidCaseState("only an awaiting-review case can be approved")
             if case["current_revision"] != analysis_revision:
-                raise ConcurrentUpdate("review must target the current analysis revision")
+                raise ConcurrentUpdate(
+                    "review must target the current analysis revision"
+                )
             prior = connection.execute(
-                "SELECT review_id FROM review_records WHERE case_id=? AND analysis_revision=?",
+                "SELECT review_id FROM review_records WHERE case_id=? "
+                "AND analysis_revision=?",
                 (case_id, analysis_revision),
             ).fetchone()
             if prior is not None:
-                raise InvalidCaseState("this analysis revision has already been reviewed")
+                raise InvalidCaseState(
+                    "this analysis revision has already been reviewed"
+                )
 
             connection.execute(
                 """
@@ -593,6 +697,41 @@ class SQLiteRepository:
                 ),
             )
 
+    def merge_annotation_candidate(
+        self, candidate: AnnotationCandidate, now: datetime
+    ) -> str:
+        with self._transaction() as connection:
+            self._case_row(connection, candidate.case_id)
+            existing = connection.execute(
+                "SELECT annotation_id FROM annotation_candidates "
+                "WHERE case_id=? AND analysis_revision=? AND status='pending' "
+                "ORDER BY created_at LIMIT 1",
+                (candidate.case_id, candidate.analysis_revision),
+            ).fetchone()
+            if existing is not None:
+                annotation_id = str(existing["annotation_id"])
+                connection.execute(
+                    "UPDATE annotation_candidates SET candidate_json=? "
+                    "WHERE annotation_id=?",
+                    (_json(candidate), annotation_id),
+                )
+                return annotation_id
+            annotation_id = str(uuid.uuid4())
+            connection.execute(
+                "INSERT INTO annotation_candidates("
+                "annotation_id, case_id, analysis_revision, candidate_json, "
+                "status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    annotation_id,
+                    candidate.case_id,
+                    candidate.analysis_revision,
+                    _json(candidate),
+                    candidate.status.value,
+                    to_wire(now),
+                ),
+            )
+            return annotation_id
+
     def adjudicate_label(
         self,
         *,
@@ -605,7 +744,9 @@ class SQLiteRepository:
         with self._transaction() as connection:
             case = self._case_row(connection, label.case_id)
             if case["version"] != expected_case_version:
-                raise ConcurrentUpdate("case version changed; reload before adjudication")
+                raise ConcurrentUpdate(
+                    "case version changed; reload before adjudication"
+                )
             candidate = connection.execute(
                 "SELECT status, case_id, analysis_revision FROM annotation_candidates "
                 "WHERE annotation_id=?",
@@ -617,9 +758,13 @@ class SQLiteRepository:
                 candidate["case_id"] != label.case_id
                 or candidate["analysis_revision"] != label.analysis_revision
             ):
-                raise ConcurrentUpdate("label must reference the candidate's exact revision")
+                raise ConcurrentUpdate(
+                    "label must reference the candidate's exact revision"
+                )
             if candidate["status"] != "pending":
-                raise InvalidCaseState("annotation candidate has already been adjudicated")
+                raise InvalidCaseState(
+                    "annotation candidate has already been adjudicated"
+                )
             prior = connection.execute(
                 "SELECT label_id FROM adjudicated_labels WHERE case_id=? "
                 "AND analysis_revision=? ORDER BY created_at DESC LIMIT 1",
@@ -681,10 +826,13 @@ class SQLiteRepository:
             ).fetchone()
             if existing is not None:
                 if existing["payload_json"] != encoded:
-                    raise IdempotencyConflict("alert event ID was reused with new content")
+                    raise IdempotencyConflict(
+                        "alert event ID was reused with new content"
+                    )
                 return False
             connection.execute(
-                "INSERT INTO alert_events(event_id, received_at, status, priority, name, "
+                "INSERT INTO alert_events("
+                "event_id, received_at, status, priority, name, "
                 "payload_json) VALUES (?, ?, ?, ?, ?, ?)",
                 (event_id, to_wire(received_at), status, priority, name, encoded),
             )
@@ -753,6 +901,22 @@ class SQLiteRepository:
                 for row in rows
             ]
 
+    def list_recent_completion_events(
+        self, limit: int, run_mode: str
+    ) -> list[dict[str, object]]:
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("completion-event limit must be between 1 and 500")
+        if not run_mode.strip():
+            raise ValueError("completion-event run mode must be non-empty")
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT event_json FROM completion_events "
+                "WHERE json_extract(event_json, '$.run_mode')=? "
+                "ORDER BY rowid DESC LIMIT ?",
+                (run_mode, limit),
+            ).fetchall()
+            return [json.loads(row["event_json"]) for row in rows]
+
     def _case_row(self, connection: sqlite3.Connection, case_id: str) -> sqlite3.Row:
         row = connection.execute(
             "SELECT * FROM cases WHERE case_id=?", (case_id,)
@@ -783,7 +947,8 @@ class SQLiteRepository:
         ).fetchall()
         audit = connection.execute(
             "SELECT event_id, analysis_revision, actor, event_type, occurred_at, "
-            "details_json FROM audit_events WHERE case_id=? ORDER BY occurred_at, event_id",
+            "details_json FROM audit_events WHERE case_id=? "
+            "ORDER BY occurred_at, event_id",
             (case_id,),
         ).fetchall()
         return {

@@ -63,6 +63,31 @@ def test_safeguard_does_not_demote_an_urgent_model_prediction() -> None:
     assert flags == ()
 
 
+def test_safeguard_promotes_loss_of_essential_funds_but_not_explicit_denial() -> None:
+    classification = Classification(
+        Category.SERVICE_ACCESS,
+        Severity.SEV3,
+        (),
+        "Fixture classification summary.",
+    )
+    urgent = (
+        "My account access is blocked and I cannot use my own money to buy food. "
+        "This is causing immediate financial harm."
+    )
+    denied = (
+        "My account access is blocked, but I can still use my money for food and "
+        "there is no financial harm."
+    )
+
+    promoted, promoted_flags = apply_safeguards(urgent, classification)
+    unchanged, denied_flags = apply_safeguards(denied, classification)
+
+    assert promoted is Severity.SEV1
+    assert "financial_harm_signal" in promoted_flags
+    assert unchanged is Severity.SEV3
+    assert denied_flags == ()
+
+
 @pytest.mark.parametrize(
     "payload",
     [

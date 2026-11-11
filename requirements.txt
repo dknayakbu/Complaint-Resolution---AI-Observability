@@ -1,6 +1,9 @@
 # Runtime and development dependencies; uv.lock is the reproducible lockfile.
 fastapi>=0.115,<1
 openai>=1.70,<3
+opentelemetry-api>=1.29,<2
+opentelemetry-exporter-otlp-proto-http>=1.29,<2
+opentelemetry-sdk>=1.29,<2
 streamlit>=1.43,<2
 uvicorn[standard]>=0.34,<1
 mypy>=1.15,<2

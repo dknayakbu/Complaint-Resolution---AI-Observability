@@ -1,4 +1,4 @@
-"""Bounded generation adapters; live and fixture providers are never implicit fallbacks."""
+"""Bounded generation adapters without implicit live/fixture fallbacks."""
 
 import json
 import time
@@ -74,7 +74,11 @@ class OpenAIProvider:
             raise ProviderFailure("provider_timeout", retryable=True) from error
         except APIStatusError as error:
             retryable = error.status_code == 429 or error.status_code >= 500
-            code = "provider_rate_limited" if error.status_code == 429 else "provider_error"
+            code = (
+                "provider_rate_limited"
+                if error.status_code == 429
+                else "provider_error"
+            )
             raise ProviderFailure(code, retryable=retryable) from error
         except Exception as error:
             raise ProviderFailure("provider_error", retryable=False) from error
@@ -169,28 +173,76 @@ class FixtureProvider:
             try:
                 payload = json.loads(user_prompt)
                 complaint = payload["complaint_text"]
+                source_sample_id = payload.get("source_sample_id")
             except (json.JSONDecodeError, KeyError, TypeError) as error:
-                raise ProviderFailure("fixture_input_invalid", retryable=False) from error
+                raise ProviderFailure(
+                    "fixture_input_invalid", retryable=False
+                ) from error
             if not isinstance(complaint, str) or not complaint:
                 raise ProviderFailure("fixture_input_invalid", retryable=False)
+            if source_sample_id == "synthetic-provider-timeout":
+                raise ProviderFailure("provider_timeout", retryable=False)
+            if source_sample_id == "scene-2-controlled-raw-miss":
+                category, severity = "other", 3
+            else:
+                category, severity = _fixture_classification(complaint)
+            quote = complaint[: min(len(complaint), 1200)]
             return ProviderResponse(
                 json.dumps(
                     {
-                        "category": "accounts",
-                        "model_severity": 3,
-                        "evidence": [
-                            {"start": 0, "end": len(complaint), "quote": complaint}
-                        ],
-                        "decision_summary": "Fixture classification; human review required.",
+                        "category": category,
+                        "model_severity": severity,
+                        "evidence": [{"start": 0, "end": len(quote), "quote": quote}],
+                        "decision_summary": (
+                            "Scripted fixture classification; human review required."
+                        ),
                     }
                 ),
                 model,
             )
         if stage is Stage.DRAFTING:
+            try:
+                payload = json.loads(user_prompt)
+                complaint = str(payload["complaint_text"]).casefold()
+            except (json.JSONDecodeError, KeyError, TypeError) as error:
+                raise ProviderFailure(
+                    "fixture_input_invalid", retryable=False
+                ) from error
+            if "replacement" in complaint and "card" in complaint:
+                draft = (
+                    "Thank you for explaining that your replacement debit card "
+                    "arrived after the expected date while your current card works."
+                )
+            elif "duplicate" in complaint or "debited" in complaint:
+                draft = (
+                    "Thank you for explaining the duplicate debit and its effect "
+                    "on the money you need for rent."
+                )
+            else:
+                draft = (
+                    "Thank you for describing your concern. We will review the "
+                    "information you provided."
+                )
             return ProviderResponse(
-                json.dumps(
-                    {"draft": "Thank you for contacting us. We will review your concern."}
-                ),
+                json.dumps({"draft": draft}),
                 model,
             )
         raise ProviderFailure("unsupported_fixture_stage", retryable=False)
+
+
+def _fixture_classification(complaint: str) -> tuple[str, int]:
+    """Map known synthetic story phrases to scripted, non-model fixture results."""
+    lowered = complaint.casefold()
+    if "disability accommodation" in lowered or "discrimination" in lowered:
+        return "discrimination", 3
+    if "scam" in lowered or "verification code" in lowered:
+        return "fraud_scams", 3
+    if "replacement card" in lowered or "duplicate" in lowered or "debit" in lowered:
+        return "cards_payments", 3
+    if "credit" in lowered or "mortgage" in lowered or "loan" in lowered:
+        return "lending", 3
+    if "cannot access" in lowered or "locked out" in lowered or "portal" in lowered:
+        return "service_access", 3
+    if "account" in lowered or "statement" in lowered:
+        return "accounts", 3
+    return "other", 3

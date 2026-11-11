@@ -2,7 +2,13 @@
 
 import json
 
-from complaint_copilot.contracts import AnalysisRequest, Classification, ModelDecision, Severity, Stage
+from complaint_copilot.contracts import (
+    AnalysisRequest,
+    Classification,
+    ModelDecision,
+    Severity,
+    Stage,
+)
 from complaint_copilot.provider import Provider, ProviderResponse
 
 DRAFTING_PROMPT_VERSION = "drafting-prompt-v1"

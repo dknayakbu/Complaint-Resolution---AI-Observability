@@ -13,25 +13,38 @@ from complaint_copilot.contracts import (
 
 
 def _priority_for_signal(signal: SignalReference) -> str:
-    if "safety" in signal.reason_code.lower() or "severity" in signal.reason_code.lower():
+    if (
+        "safety" in signal.reason_code.lower()
+        or "severity" in signal.reason_code.lower()
+    ):
         return "P1"
     if "quality" in signal.reason_code.lower() or "draft" in signal.reason_code.lower():
         return "P2"
     return "P3"
 
 
-def merge(existing_candidate: AnnotationCandidate | None, signal: SignalReference) -> AnnotationCandidate:
-    """Merge a signal into a pending annotation candidate without double-counting duplicates."""
+def merge(
+    existing_candidate: AnnotationCandidate | None, signal: SignalReference
+) -> AnnotationCandidate:
+    """Merge a signal into a pending candidate without counting duplicates."""
     signals = list(existing_candidate.signals) if existing_candidate is not None else []
     if signal not in signals:
         signals.append(signal)
 
-    evidence_links = list(existing_candidate.evidence_links) if existing_candidate is not None else []
+    evidence_links = (
+        list(existing_candidate.evidence_links)
+        if existing_candidate is not None
+        else []
+    )
     evidence_links.append(signal.reference_id)
     evidence_links = list(OrderedDict.fromkeys(evidence_links))
 
     if existing_candidate is None:
-        case_id = signal.reference_id.split(":", 1)[0] if ":" in signal.reference_id else "unknown_case"
+        case_id = (
+            signal.reference_id.split(":", 1)[0]
+            if ":" in signal.reference_id
+            else "unknown_case"
+        )
         analysis_revision = 1
     else:
         case_id = existing_candidate.case_id
@@ -53,7 +66,9 @@ def merge(existing_candidate: AnnotationCandidate | None, signal: SignalReferenc
     )
 
 
-def sort_pending_candidates(candidates: Iterable[AnnotationCandidate]) -> list[AnnotationCandidate]:
+def sort_pending_candidates(
+    candidates: Iterable[AnnotationCandidate],
+) -> list[AnnotationCandidate]:
     """Safety-first ordering of candidate annotation items."""
     return sorted(
         candidates,

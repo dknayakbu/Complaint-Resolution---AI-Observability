@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -25,46 +25,78 @@ class DatasetValidationError(ValueError):
 
 def _read_jsonl(path: str | Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for line_number, raw_line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), start=1):
+    for line_number, raw_line in enumerate(
+        Path(path).read_text(encoding="utf-8").splitlines(), start=1
+    ):
         if not raw_line.strip():
             continue
         try:
             payload = json.loads(raw_line)
         except json.JSONDecodeError as exc:
-            raise DatasetValidationError(f"Invalid JSON on line {line_number} of {path}") from exc
+            raise DatasetValidationError(
+                f"Invalid JSON on line {line_number} of {path}"
+            ) from exc
         if not isinstance(payload, dict):
-            raise DatasetValidationError(f"Line {line_number} of {path} must decode to an object")
+            raise DatasetValidationError(
+                f"Line {line_number} of {path} must decode to an object"
+            )
         records.append(payload)
     return records
 
 
-def _normalise_case_id(record: Mapping[str, object], *, field_name: str = "case_id") -> str:
+def _normalise_case_id(
+    record: Mapping[str, object], *, field_name: str = "case_id"
+) -> str:
     case_id = record.get(field_name)
     if not isinstance(case_id, str) or not case_id.strip():
-        raise DatasetValidationError(f"{field_name} is required and must be a non-empty string")
+        raise DatasetValidationError(
+            f"{field_name} is required and must be a non-empty string"
+        )
     return case_id
 
 
-def _validate_label_record(record: Mapping[str, object]) -> tuple[str, Category, Severity, QueueKey]:
+def _validate_label_record(
+    record: Mapping[str, object],
+) -> tuple[str, Category, Severity, QueueKey]:
     case_id = _normalise_case_id(record)
     if "category" not in record or "severity" not in record or "queue" not in record:
-        raise DatasetValidationError(f"Label for {case_id} is missing category/severity/queue")
+        raise DatasetValidationError(
+            f"Label for {case_id} is missing category/severity/queue"
+        )
     try:
-        category = Category(record["category"])
+        raw_category = record["category"]
+        if not isinstance(raw_category, str):
+            raise ValueError
+        category = Category(raw_category)
     except ValueError as exc:  # pragma: no cover - exercised via tests
-        raise DatasetValidationError(f"Label for {case_id} has invalid category") from exc
+        raise DatasetValidationError(
+            f"Label for {case_id} has invalid category"
+        ) from exc
     try:
-        severity = Severity(record["severity"])
+        raw_severity = record["severity"]
+        if isinstance(raw_severity, str) and raw_severity in Severity.__members__:
+            severity = Severity[raw_severity]
+        elif type(raw_severity) is int:
+            severity = Severity(raw_severity)
+        else:
+            raise ValueError
     except ValueError as exc:  # pragma: no cover - exercised via tests
-        raise DatasetValidationError(f"Label for {case_id} has invalid severity") from exc
+        raise DatasetValidationError(
+            f"Label for {case_id} has invalid severity"
+        ) from exc
     try:
-        queue = QueueKey(record["queue"])
+        raw_queue = record["queue"]
+        if not isinstance(raw_queue, str):
+            raise ValueError
+        queue = QueueKey(raw_queue)
     except ValueError as exc:  # pragma: no cover - exercised via tests
         raise DatasetValidationError(f"Label for {case_id} has invalid queue") from exc
     return case_id, category, severity, queue
 
 
-def load_labeled_cases(input_path: str | Path, label_path: str | Path) -> dict[str, dict[str, object]]:
+def load_labeled_cases(
+    input_path: str | Path, label_path: str | Path
+) -> dict[str, dict[str, object]]:
     """Load inputs and labels, reject duplicate IDs and split leakage."""
     input_records = _read_jsonl(input_path)
     label_records = _read_jsonl(label_path)
@@ -74,7 +106,9 @@ def load_labeled_cases(input_path: str | Path, label_path: str | Path) -> dict[s
         for record in payload:
             case_id = _normalise_case_id(record)
             if case_id in seen[kind]:
-                raise DatasetValidationError(f"Duplicate case_id found in {kind} data: {case_id}")
+                raise DatasetValidationError(
+                    f"Duplicate case_id found in {kind} data: {case_id}"
+                )
             seen[kind].add(case_id)
 
     input_ids = seen["input"]
@@ -82,9 +116,13 @@ def load_labeled_cases(input_path: str | Path, label_path: str | Path) -> dict[s
     missing = sorted(input_ids - label_ids)
     extra = sorted(label_ids - input_ids)
     if missing:
-        raise DatasetValidationError(f"Labels are missing for case_ids: {', '.join(missing)}")
+        raise DatasetValidationError(
+            f"Labels are missing for case_ids: {', '.join(missing)}"
+        )
     if extra:
-        raise DatasetValidationError(f"Input data is missing for case_ids: {', '.join(extra)}")
+        raise DatasetValidationError(
+            f"Input data is missing for case_ids: {', '.join(extra)}"
+        )
 
     output: dict[str, dict[str, object]] = {}
     for record in input_records:
@@ -96,14 +134,20 @@ def load_labeled_cases(input_path: str | Path, label_path: str | Path) -> dict[s
             or key.startswith(("expected_", "ground_truth_", "label_"))
         }
         if prohibited:
+            prohibited_fields = ", ".join(sorted(prohibited))
             raise DatasetValidationError(
-                f"Input record {case_id} contains forbidden expected-label fields: {', '.join(sorted(prohibited))}"
+                f"Input record {case_id} contains forbidden expected-label fields: "
+                f"{prohibited_fields}"
             )
         output[case_id] = {"input": record}
 
     for record in label_records:
         case_id, category, severity, queue = _validate_label_record(record)
-        output[case_id]["label"] = {"category": category, "severity": severity, "queue": queue}
+        output[case_id]["label"] = {
+            "category": category,
+            "severity": severity,
+            "queue": queue,
+        }
 
     return output
 
@@ -119,7 +163,8 @@ def serialize_model_input(record: Mapping[str, object]) -> dict[str, object]:
     }
     if prohibited:
         raise DatasetValidationError(
-            "ground-truth fields are forbidden in model input: " + ", ".join(sorted(prohibited))
+            "ground-truth fields are forbidden in model input: "
+            + ", ".join(sorted(prohibited))
         )
     if "complaint_text" not in payload:
         raise DatasetValidationError("Model input must contain complaint_text")
@@ -131,7 +176,10 @@ def build_confusion_matrix(
     labels: Mapping[str, str],
     ordered_labels: Sequence[str],
 ) -> dict[str, dict[str, int]]:
-    matrix = {label: {predicted: 0 for predicted in ordered_labels} for label in ordered_labels}
+    matrix = {
+        label: {predicted: 0 for predicted in ordered_labels}
+        for label in ordered_labels
+    }
     for case_id, actual in labels.items():
         predicted = predictions.get(case_id)
         if predicted is None:
@@ -150,11 +198,11 @@ def _coerce_string(value: object) -> str:
     return str(value)
 
 
-def _case_field_map(payload: Mapping[str, Mapping[str, object]], *, field_name: str) -> dict[str, str]:
+def _case_field_map(
+    payload: Mapping[str, Mapping[str, object]], *, field_name: str
+) -> dict[str, str]:
     result: dict[str, str] = {}
     for case_id, record in payload.items():
-        if not isinstance(record, Mapping):
-            continue
         value = record.get(field_name)
         if value is not None:
             result[str(case_id)] = str(value)
@@ -183,10 +231,16 @@ def _recall_for_threshold(
     *,
     expected_value: str,
 ) -> tuple[float, int]:
-    relevant = {case_id: value for case_id, value in labels.items() if value == expected_value}
+    relevant = {
+        case_id: value for case_id, value in labels.items() if value == expected_value
+    }
     if not relevant:
         return 0.0, 0
-    matched = sum(1 for case_id, expected in relevant.items() if predictions.get(case_id) == expected)
+    matched = sum(
+        1
+        for case_id, expected in relevant.items()
+        if predictions.get(case_id) == expected
+    )
     return matched / len(relevant), len(relevant)
 
 
@@ -202,16 +256,12 @@ def effective_sev1_recall(
     prediction_values: dict[str, str] = {}
     label_values: dict[str, str] = {}
     for case_id, record in predictions.items():
-        if not isinstance(record, Mapping):
-            continue
         value = record.get("effective_severity")
         if value is None:
             value = record.get("severity")
         if value is not None:
             prediction_values[str(case_id)] = str(value)
     for case_id, record in labels.items():
-        if not isinstance(record, Mapping):
-            continue
         value = record.get("effective_severity")
         if value is None:
             value = record.get("severity")
@@ -243,7 +293,9 @@ def build_quality_report(
     unknown_samples = len(missing_predictions)
     pred_total = len(severity_predictions)
 
-    raw_recall, raw_denominator = _recall_for_threshold(severity_predictions, severity_labels, expected_value="SEV1")
+    raw_recall, raw_denominator = _recall_for_threshold(
+        severity_predictions, severity_labels, expected_value="SEV1"
+    )
     effective_recall, effective_denominator = effective_sev1_recall(predictions, labels)
 
     report: dict[str, object] = {
@@ -274,7 +326,9 @@ def build_quality_report(
     return report
 
 
-def _score_value(value: Decimal | int | float | str | None) -> Decimal | None:  # pragma: no cover - used by typed call sites
+def _score_value(
+    value: Decimal | int | float | str | None,
+) -> Decimal | None:  # pragma: no cover - used by typed call sites
     if value is None:
         return None
     if isinstance(value, Decimal):
