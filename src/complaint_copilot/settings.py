@@ -2,7 +2,6 @@
 
 import os
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
@@ -21,14 +20,6 @@ class AppSettings:
     max_provider_attempts: int = 2
     short_input_max: int | None = None
     medium_input_max: int | None = None
-    live_model_approved: bool = False
-    live_approval_id: str | None = None
-    live_max_requests: int | None = None
-    live_max_calls: int | None = None
-    live_max_tokens: int | None = None
-    live_max_cost_usd: Decimal | None = None
-    live_max_output_tokens: int | None = None
-    live_max_usd_per_1k_tokens: Decimal | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in {"fixture", "live"}:
@@ -47,40 +38,6 @@ class AppSettings:
         if not 1 <= self.max_provider_attempts <= 3:
             raise ValueError("provider attempts must be between 1 and 3")
         if self.mode == "live":
-            if not self.live_model_approved:
-                raise ValueError("LIVE_MODEL_APPROVED=true is required in live mode")
-            if not self.live_approval_id or not self.live_approval_id.strip():
-                raise ValueError("LIVE_MODEL_APPROVAL_ID is required in live mode")
-            if (
-                type(self.live_max_requests) is not int
-                or not 1 <= self.live_max_requests <= 10
-            ):
-                raise ValueError(
-                    "LIVE_MODEL_MAX_REQUESTS must be between 1 and 10 in live mode"
-                )
-            if (
-                type(self.live_max_calls) is not int
-                or not 1 <= self.live_max_calls <= 60
-            ):
-                raise ValueError("LIVE_MODEL_MAX_CALLS must be between 1 and 60")
-            if type(self.live_max_tokens) is not int or self.live_max_tokens < 1:
-                raise ValueError("LIVE_MODEL_MAX_TOKENS must be a positive integer")
-            if (
-                type(self.live_max_output_tokens) is not int
-                or not 1 <= self.live_max_output_tokens <= 4096
-            ):
-                raise ValueError(
-                    "LIVE_MODEL_MAX_OUTPUT_TOKENS must be between 1 and 4096"
-                )
-            for name, value in (
-                ("LIVE_MODEL_MAX_COST_USD", self.live_max_cost_usd),
-                (
-                    "LIVE_MODEL_MAX_USD_PER_1K_TOKENS",
-                    self.live_max_usd_per_1k_tokens,
-                ),
-            ):
-                if value is None or not value.is_finite() or value <= 0:
-                    raise ValueError(f"{name} must be a positive finite amount")
             if not self.openai_api_key:
                 raise ValueError("OPENAI_API_KEY is required in live mode")
             if not self.reviewer_token or self.reviewer_token.startswith("fixture-"):
@@ -120,16 +77,6 @@ class AppSettings:
             max_provider_attempts=int(os.getenv("PROVIDER_MAX_ATTEMPTS", "2")),
             short_input_max=_optional_int_env("SHORT_INPUT_MAX"),
             medium_input_max=_optional_int_env("MEDIUM_INPUT_MAX"),
-            live_model_approved=_boolean_env("LIVE_MODEL_APPROVED", default=False),
-            live_approval_id=os.getenv("LIVE_MODEL_APPROVAL_ID"),
-            live_max_requests=_optional_int_env("LIVE_MODEL_MAX_REQUESTS"),
-            live_max_calls=_optional_int_env("LIVE_MODEL_MAX_CALLS"),
-            live_max_tokens=_optional_int_env("LIVE_MODEL_MAX_TOKENS"),
-            live_max_cost_usd=_optional_decimal_env("LIVE_MODEL_MAX_COST_USD"),
-            live_max_output_tokens=_optional_int_env("LIVE_MODEL_MAX_OUTPUT_TOKENS"),
-            live_max_usd_per_1k_tokens=_optional_decimal_env(
-                "LIVE_MODEL_MAX_USD_PER_1K_TOKENS"
-            ),
         )
 
 
@@ -143,28 +90,8 @@ def _optional_int_env(name: str) -> int | None:
         raise ValueError(f"{name} must be a positive integer") from error
 
 
-def _optional_decimal_env(name: str) -> Decimal | None:
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        return None
-    try:
-        return Decimal(value)
-    except InvalidOperation as error:
-        raise ValueError(f"{name} must be a positive finite amount") from error
-
-
 def _optional_model_env(name: str) -> str | None:
     value = os.getenv(name)
     if value is None or not value.strip():
         return None
     return value.strip()
-
-
-def _boolean_env(name: str, *, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    if normalized not in {"true", "false"}:
-        raise ValueError(f"{name} must be 'true' or 'false'")
-    return normalized == "true"

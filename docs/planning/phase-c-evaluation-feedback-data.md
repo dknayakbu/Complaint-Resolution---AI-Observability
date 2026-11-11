@@ -66,7 +66,7 @@ uv run ruff check .
 uv run mypy src
 ```
 
-Use fake judges and recorded analysis results. Imports/tests need no OpenAI credentials. A live evaluation must require separate explicit approval, `--allow-live-model`, bounded call/token/cost controls and recorded configuration.
+Use fake judges and recorded analysis results for tests. Imports/tests need no OpenAI credentials. Record the configuration of any live evaluation; provider charges and limits apply.
 
 Before PR-C merge, also run `uv run pytest -q` and `uv run ruff format --check .` on the final branch updated with PR-A/B. Record base/final commit, dataset/label versions, adjudication status and actual commands/results in the PR. Unreviewed labels remain explicitly unreviewed; never claim sign-off from generated data alone.
 

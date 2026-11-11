@@ -1,44 +1,71 @@
 {
   "annotations": {"list": []},
   "editable": false,
-  "graphTooltip": 0,
+  "id": null,
+  "links": [],
   "panels": [
     {
+      "type": "text",
+      "title": "Safety first: are urgent complaints getting human attention?",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "id": 10,
+      "options": {"mode": "markdown", "content": "Use a fictional harm complaint, review its model and effective severity, then run the **quality** replay in the app. A safety flag is not necessarily a model miss. Replay recall is based on examples, not live model accuracy. [Complaint Operations](/d/complaint-operations) | [Drift and Incident](/d/drift-incident) | [Jaeger](http://localhost:16686)"}
+    },
+    {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Cases with a covered safety signal, including cases already predicted as SEV1. This is not a count of confirmed model misses.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
       "id": 1,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode, policy_flag) (complaint_safety_promotions_total)", "refId": "A"}],
-      "title": "Safeguard Promotions",
+      "targets": [{"expr": "sum by (run_mode) (complaint_safety_promotions_total)", "legendFormat": "{{run_mode}}", "refId": "A"}],
+      "title": "Cases with a safety flag",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "\\bdemo\\b", "renamePattern": "Live model"}},
+        {"id": "renameByRegex", "options": {"regex": "\\bfixture\\b", "renamePattern": "Scripted test"}}
+      ],
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Authorized reviews that created a simulated queue entry, grouped by live model or scripted test mode.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
       "id": 2,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode, outcome) (complaint_reviews_total)", "refId": "A"}],
-      "title": "Human Reviews",
+      "targets": [{"expr": "sum by (run_mode) (complaint_reviews_total{outcome=\"approved_routed\"})", "legendFormat": "{{run_mode}}", "refId": "A"}],
+      "title": "Human-approved simulated routes",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "\\blive\\b", "renamePattern": "Live model"}},
+        {"id": "renameByRegex", "options": {"regex": "\\bfixture\\b", "renamePattern": "Scripted test"}}
+      ],
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "jaeger", "uid": "jaeger"},
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Average recall recorded by repeated deterministic quality replays. Scripted fixture uses fixture responses; controlled scenario uses label-derived examples. Before safeguards uses the initial severity; after safeguards includes replay safeguards. Not measured live accuracy.",
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
       "id": 3,
-      "options": {"query": {"queryType": "search", "service": "complaint-copilot-api"}, "serviceMap": {"datasourceUid": "prometheus"}},
-      "title": "Application Traces",
-      "type": "traces"
+      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum by (pack, metric_type) (evaluation_sev1_recall_sum{replay=\"quality\"}) / sum by (pack, metric_type) (evaluation_sev1_recall_count{replay=\"quality\"})", "legendFormat": "{{pack}} / {{metric_type}}", "refId": "A"}],
+      "title": "SEV1 recall - quality replay",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^Q0 / raw$", "renamePattern": "Scripted fixture / Before safeguards"}},
+        {"id": "renameByRegex", "options": {"regex": "^Q0 / effective$", "renamePattern": "Scripted fixture / After safeguards"}},
+        {"id": "renameByRegex", "options": {"regex": "^Q1 / raw$", "renamePattern": "Controlled scenario / Before safeguards"}},
+        {"id": "renameByRegex", "options": {"regex": "^Q1 / effective$", "renamePattern": "Controlled scenario / After safeguards"}}
+      ],
+      "type": "stat"
     }
   ],
   "refresh": "15s",
   "schemaVersion": 39,
-  "tags": ["synthetic", "safety"],
+  "tags": ["training", "safety"],
   "templating": {"list": []},
   "time": {"from": "now-1h", "to": "now"},
   "timezone": "browser",
   "title": "Safety and Quality",
   "uid": "safety-quality",
-  "version": 1
+  "version": 2
 }

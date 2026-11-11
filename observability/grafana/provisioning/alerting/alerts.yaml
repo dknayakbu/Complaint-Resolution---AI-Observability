@@ -38,7 +38,7 @@ groups:
           incident_priority: P1
           team: complaint-copilot
         annotations:
-          summary: A valid synthetic complaint ended in manual-required processing.
+          summary: A complaint ended in manual-required processing.
           runbook_url: file://docs/runbooks/synthetic-incident.md
         data:
           - refId: A
@@ -111,7 +111,7 @@ groups:
                     type: last
                   type: query
       - uid: complaint-input-drift-warning
-        title: Synthetic complaint input drift warning
+        title: Complaint input drift replay warning
         condition: A
         for: 0s
         noDataState: OK
@@ -120,7 +120,7 @@ groups:
           incident_priority: P3
           team: complaint-copilot
         annotations:
-          summary: The synthetic input distribution crossed its configured drift threshold.
+          summary: Consecutive replay windows crossed the input-shift threshold.
           runbook_url: file://docs/runbooks/synthetic-incident.md
         data:
           - refId: A
@@ -152,7 +152,7 @@ groups:
                     type: last
                   type: query
       - uid: complaint-cost-anomaly
-        title: Synthetic estimated cost anomaly
+        title: Estimated cost replay anomaly
         condition: A
         for: 0s
         noDataState: OK
@@ -161,7 +161,7 @@ groups:
           incident_priority: P2
           team: complaint-copilot
         annotations:
-          summary: The comparable synthetic estimated-cost window crossed its threshold.
+          summary: The scripted estimated-cost window crossed its threshold.
           runbook_url: file://docs/runbooks/synthetic-incident.md
         data:
           - refId: A

@@ -1,66 +1,121 @@
 {
   "annotations": {"list": []},
   "editable": false,
-  "graphTooltip": 0,
+  "id": null,
+  "links": [],
   "panels": [
     {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "id": 1,
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode) (llm_cost_unknown_total)", "refId": "A"}],
-      "title": "Unknown Cost Records (not zero cost)",
-      "type": "timeseries"
+      "type": "text",
+      "title": "What changed, and can we observe it?",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "id": 10,
+      "options": {"mode": "markdown", "content": "Run the **drift**, **cost** and **slo** replays in the app, or run the complaint burst to compare its input with the reference set. Open **Alert inbox** for events and Grafana **Alerting** for rule status. Replays and manually injected alerts are not real outages. [Complaint Operations](/d/complaint-operations) | [Safety and Quality](/d/safety-quality)"}
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Mean Jensen-Shannon divergence for each replay window since the API started. Larger values mean a greater distribution shift. The replay warning threshold is 0.10; this is not live traffic drift.",
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.1}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum by (window) (complaint_drift_js_divergence_sum{replay=\"drift\",window=~\"1|2\"}) / sum by (window) (complaint_drift_js_divergence_count{replay=\"drift\",window=~\"1|2\"})", "legendFormat": "Window {{window}}", "refId": "A"}],
+      "title": "Input shift - replay windows",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Replay warning events since the API started. Drift requires consecutive shifted windows; cost is a scripted anomaly, not actual billing.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
       "id": 2,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "up", "refId": "A"}],
-      "title": "Prometheus Scrape Health",
+      "targets": [
+        {"expr": "sum(complaint_drift_warnings_total{replay=\"drift\"})", "legendFormat": "Drift warnings", "refId": "A"},
+        {"expr": "sum(complaint_cost_anomaly_events_total{replay=\"cost\"})", "legendFormat": "Cost anomalies", "refId": "B"}
+      ],
+      "title": "Replay warnings",
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "description": "Share of good outcomes in each 30-case replay phase, averaged across replays. The live latest-30 window and its sample status are in the application sidebar/API.",
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "id": 3,
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode, status) (complaint_incident_events_total)", "refId": "A"}],
-      "title": "Local Incident Inbox Events",
-      "type": "timeseries"
+      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum by (phase) (complaint_slo_outcomes_total{replay=\"slo\",outcome=\"good\"}) / sum by (phase) (complaint_slo_outcomes_total{replay=\"slo\"})", "legendFormat": "{{phase}}", "refId": "A"}],
+      "title": "Good outcomes - SLO replay",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^healthy$", "renamePattern": "Before failure"}},
+        {"id": "renameByRegex", "options": {"regex": "^one_terminal_failure$", "renamePattern": "After one failure"}},
+        {"id": "renameByRegex", "options": {"regex": "^after_30_fresh_successes$", "renamePattern": "After recovery"}}
+      ],
+      "type": "stat"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Stored local inbox events by firing/resolved status since the API started, not the current number of active incidents. Events can be manually injected or delivered by Grafana.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "id": 4,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode, outcome) (rate(complaint_slo_outcomes_total[5m]))", "refId": "A"}],
-      "title": "Observed SLI Outcomes (5m; not a calibrated SLO)",
+      "targets": [{"expr": "sum by (status) (complaint_incident_events_total)", "legendFormat": "{{status}}", "refId": "A"}],
+      "title": "Local alert inbox events",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^firing$", "renamePattern": "Alert fired"}},
+        {"id": "renameByRegex", "options": {"regex": "^resolved$", "renamePattern": "Alert resolved"}}
+      ],
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "description": "1 means Prometheus can scrape the target; 0 means it cannot. No data may mean a missing target. Scrape health alone does not establish model quality.",
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 20},
       "id": 5,
+      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "up", "legendFormat": "{{job}}", "refId": "A"}],
+      "title": "Telemetry scrape health",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^otel-collector$", "renamePattern": "Telemetry collector"}},
+        {"id": "renameByRegex", "options": {"regex": "^otel-exporter$", "renamePattern": "Application metrics exporter"}}
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Stage records without a complete cost estimate. Unknown is not free: live pricing is unconfigured and provider billing remains authoritative.",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 20},
+      "id": 6,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "ALERTS{alertstate=\"firing\"}", "refId": "A"}],
-      "title": "Active Prometheus Alerting Rules",
+      "targets": [{"expr": "sum by (run_mode) (llm_cost_unknown_total)", "legendFormat": "{{run_mode}}", "refId": "A"}],
+      "title": "Stage costs unknown",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "\\bdemo\\b", "renamePattern": "Live model"}},
+        {"id": "renameByRegex", "options": {"regex": "\\bfixture\\b", "renamePattern": "Scripted test"}}
+      ],
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Average input shift of completed complaint bursts compared with 30 reference complaints, since the API started. It compares text length and the first five words, not semantic topics. A score above 0.10 indicates a shift in these examples, not a confirmed ongoing drift warning. At least 10 cases are required per burst.",
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.1}]}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 27},
+      "id": 7,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum(complaint_drift_js_divergence_sum{replay=\"batch\"}) / sum(complaint_drift_js_divergence_count{replay=\"batch\"})", "legendFormat": "Complaint burst", "refId": "A"}],
+      "title": "Complaint burst input shift",
+      "type": "stat"
     }
   ],
   "refresh": "15s",
   "schemaVersion": 39,
-  "tags": ["synthetic", "incident"],
+  "tags": ["training", "incident"],
   "templating": {"list": []},
   "time": {"from": "now-1h", "to": "now"},
   "timezone": "browser",
   "title": "Drift and Incident",
   "uid": "drift-incident",
-  "version": 1
+  "version": 2
 }

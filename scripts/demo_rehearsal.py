@@ -1,4 +1,4 @@
-"""Run the credential-free synthetic API journey against the local Compose stack."""
+"""Run the credential-free practice API journey against the local Compose stack."""
 
 from __future__ import annotations
 
@@ -182,7 +182,7 @@ def main() -> None:
             "synthetic": True,
         },
     )
-    if baseline.get("baseline_prompt_version") != "single-call-baseline-v1":
+    if baseline.get("baseline_prompt_version") != "single-call-baseline-v2":
         raise RuntimeError("single-call baseline contract was not returned")
     print("PASS one-call baseline comparison.")
 
@@ -202,7 +202,7 @@ def main() -> None:
         payload={
             "expected_case_version": normal_case["version"],
             "analysis_revision": normal_case["current_revision"],
-            "reason": "Synthetic demo reviewer approval.",
+            "reason": "Practice reviewer approval.",
             "category": normal_result["classification"]["category"],
             "queue": normal_result["classification"]["category"],
         },
@@ -235,7 +235,7 @@ def main() -> None:
         payload={
             "analysis_revision": miss_case["current_revision"],
             "rating": "down",
-            "note": "The urgent synthetic payment harm needs specialist review.",
+            "note": "The urgent example payment harm needs specialist review.",
         },
         headers={"Authorization": f"Bearer {REVIEWER_TOKEN}"},
     )
@@ -253,7 +253,7 @@ def main() -> None:
             "severity": 1,
             "queue": "cards_payments",
             "draft_rubric_assessment": "The draft is non-committal and specific.",
-            "reason": "Synthetic reviewer corrected the controlled raw miss.",
+            "reason": "Practice reviewer corrected the controlled raw miss.",
         },
         headers={"Authorization": f"Bearer {REVIEWER_TOKEN}"},
     )
@@ -285,10 +285,10 @@ def main() -> None:
     print("PASS essential-funds safeguard, negation, and injection containment.")
 
     alert = {
-        "fingerprint": f"synthetic-demo-{uuid.uuid4()}",
+        "fingerprint": f"practice-demo-{uuid.uuid4()}",
         "status": "firing",
         "priority": "P2",
-        "title": "Synthetic demonstration alert",
+        "title": "Practice alert",
     }
     alert_headers = {"X-Internal-Token": INTERNAL_TOKEN}
     first_alert = _request(
@@ -305,7 +305,7 @@ def main() -> None:
     )
     if first_alert.get("duplicate") or not duplicate_alert.get("duplicate"):
         raise RuntimeError("alert fingerprint idempotency failed")
-    print("PASS authenticated synthetic alert inbox and duplicate suppression.")
+    print("PASS authenticated test alert inbox and duplicate suppression.")
 
     prior_alerts = _request(f"{API}/api/alerts")
     prior_alert_ids = {
@@ -314,8 +314,8 @@ def main() -> None:
         if isinstance(alert, dict) and alert.get("event_id")
     }
     incident_case = _submit(
-        "Synthetic incident rehearsal: deterministic provider timeout.",
-        fixture_id="synthetic-provider-timeout",
+        "Incident rehearsal: deterministic provider timeout.",
+        fixture_id="test-provider-timeout",
     )
     _, incident_result = _case_result(incident_case)
     if (
@@ -350,37 +350,35 @@ def main() -> None:
         raise RuntimeError("cost replay did not detect the expected spike window")
     if slo.get("one_terminal_failure", {}).get("bad") != 1:
         raise RuntimeError("SLO replay did not retain the terminal failure")
-    print("PASS synthetic drift/cost/quality/SLO computations through Phase B/C logic.")
+    print("PASS drift/cost/quality/SLO computations through Phase B/C logic.")
     print(
         "Observed drift JSD scores:",
         ", ".join(f"{score:.4f}" for score in drift["window_scores_base2_jsd"]),
     )
     print(
-        "Synthetic cost crossing:",
+        "Example cost crossing:",
         cost["threshold_crossing_spike_observation"],
         "spike observations; USD",
         cost["cumulative_cost_usd"],
         "replay total (not an invoice).",
     )
     print(
-        "Synthetic Q0/Q1 raw/effective SEV1 recall:",
+        "Example Q0/Q1 raw/effective SEV1 recall:",
         quality["q0"]["raw_sev1_recall"],
         quality["q0"]["effective_sev1_recall"],
         quality["q1"]["raw_sev1_recall"],
         quality["q1"]["effective_sev1_recall"],
     )
-    _wait_for_alert("Synthetic complaint input drift warning", "firing", timeout=60)
-    _wait_for_alert("Synthetic estimated cost anomaly", "firing", timeout=60)
-    print("PASS synthetic drift and estimated-cost Grafana alerts.")
+    _wait_for_alert("Complaint input drift replay warning", "firing", timeout=60)
+    _wait_for_alert("Estimated cost replay anomaly", "firing", timeout=60)
+    print("PASS drift and estimated-cost Grafana replay alerts.")
 
     _wait_for_trace(trace_id)
     _check_prometheus_targets()
     dashboards = _check_grafana_dashboards()
     print(f"PASS application trace arrived in Jaeger: {trace_id}")
     print("PASS Grafana provisioned dashboards:", ", ".join(dashboards))
-    print(
-        "DEMO PASS - synthetic fixture journey only; no live model or external notice."
-    )
+    print("DEMO PASS - fixture journey only; no live model or external notice.")
 
 
 if __name__ == "__main__":

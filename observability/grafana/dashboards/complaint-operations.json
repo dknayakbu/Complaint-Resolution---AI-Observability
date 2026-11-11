@@ -1,79 +1,114 @@
 {
   "annotations": {"list": []},
   "editable": false,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
   "id": null,
   "links": [],
   "panels": [
     {
+      "type": "text",
+      "title": "Start here: is the complaint workflow working?",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "id": 10,
+      "options": {"mode": "markdown", "content": "Submit a fictional complaint, then compare requests, outcomes and stage activity. Counters are since the API started; they can reset on restart. Open the [review queue](http://localhost:8501) for the actual pending cases. [Safety and Quality](/d/safety-quality) | [Drift and Incident](/d/drift-incident)"}
+    },
+    {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "New intake submissions by workflow mode. A rising line means new complaints. Live model uses the configured provider; scripted test uses fixture responses.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
       "id": 1,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode) (complaint_requests_total)", "refId": "A"}],
-      "title": "Synthetic Requests by Mode",
+      "targets": [{"expr": "sum by (run_mode) (complaint_requests_total)", "legendFormat": "{{run_mode}}", "refId": "A"}],
+      "title": "Complaints received",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "\\bdemo\\b", "renamePattern": "Live model"}},
+        {"id": "renameByRegex", "options": {"regex": "\\bfixture\\b", "renamePattern": "Scripted test"}}
+      ],
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Ready for review means analysis produced a draft; manual handling required means a person must handle the failure. Neither means the complaint was resolved.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
       "id": 2,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (outcome, run_mode) (complaint_analysis_total)", "refId": "A"}],
-      "title": "Analysis Outcomes",
+      "targets": [{"expr": "sum by (outcome, run_mode) (complaint_analysis_total)", "legendFormat": "{{run_mode}} / {{outcome}}", "refId": "A"}],
+      "title": "Analysis results",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^demo / complete$", "renamePattern": "Live model / Ready for review"}},
+        {"id": "renameByRegex", "options": {"regex": "^demo / manual_required$", "renamePattern": "Live model / Manual handling required"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / complete$", "renamePattern": "Scripted test / Ready for review"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / manual_required$", "renamePattern": "Scripted test / Manual handling required"}}
+      ],
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Completed or failed stage executions, not provider attempt counts. Classification normally precedes drafting; a failed classification can skip drafting.",
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 0},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "id": 3,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "complaint_review_backlog", "refId": "A"}],
-      "title": "Awaiting Human Review",
+      "targets": [{"expr": "sum by (stage, run_mode, status) (llm_calls_total)", "legendFormat": "{{run_mode}} / {{stage}} / {{status}}", "refId": "A"}],
+      "title": "Classification and drafting stages",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^demo / classification / succeeded$", "renamePattern": "Live model / Classification / Succeeded"}},
+        {"id": "renameByRegex", "options": {"regex": "^demo / classification / failed$", "renamePattern": "Live model / Classification / Failed"}},
+        {"id": "renameByRegex", "options": {"regex": "^demo / drafting / succeeded$", "renamePattern": "Live model / Acknowledgement drafting / Succeeded"}},
+        {"id": "renameByRegex", "options": {"regex": "^demo / drafting / failed$", "renamePattern": "Live model / Acknowledgement drafting / Failed"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / classification / succeeded$", "renamePattern": "Scripted test / Classification / Succeeded"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / classification / failed$", "renamePattern": "Scripted test / Classification / Failed"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / drafting / succeeded$", "renamePattern": "Scripted test / Acknowledgement drafting / Succeeded"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / drafting / failed$", "renamePattern": "Scripted test / Acknowledgement drafting / Failed"}}
+      ],
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Mean duration of completed stage executions in the preceding 5 minutes. No samples means no value; inspect an individual Jaeger trace for its timing.",
       "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "id": 4,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (stage, run_mode) (rate(llm_call_duration_seconds_sum[5m])) / clamp_min(sum by (stage, run_mode) (rate(llm_call_duration_seconds_count[5m])), 1)", "refId": "A"}],
-      "title": "Mean Provider Stage Duration",
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "targets": [{"expr": "sum by (stage, run_mode) (rate(llm_call_duration_seconds_sum[5m])) / (sum by (stage, run_mode) (rate(llm_call_duration_seconds_count[5m])) > 0)", "legendFormat": "{{run_mode}} / {{stage}}", "refId": "A"}],
+      "title": "Average stage duration (5 minutes)",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^demo / classification$", "renamePattern": "Live model / Classification"}},
+        {"id": "renameByRegex", "options": {"regex": "^demo / drafting$", "renamePattern": "Live model / Acknowledgement drafting"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / classification$", "renamePattern": "Scripted test / Classification"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / drafting$", "renamePattern": "Scripted test / Acknowledgement drafting"}}
+      ],
       "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+      "description": "Compare intake and completed analysis counters since the API started. A burst can make the lines separate while calls run; scrape timing and restarts affect what is visible. The difference is not a reliable review backlog.",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
       "id": 5,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (stage, run_mode) (llm_estimated_cost_usd_total)", "refId": "A"}],
-      "title": "Estimated Known Cost (USD)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 15},
-      "id": 6,
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [{"expr": "sum by (run_mode, outcome) (complaint_slo_outcomes_total)", "refId": "A"}],
-      "title": "Persisted Terminal Outcomes (fixture counts included)",
+      "targets": [
+        {"expr": "sum by (run_mode) (complaint_requests_total)", "legendFormat": "{{run_mode}} / Received", "refId": "A"},
+        {"expr": "sum by (run_mode) (complaint_analysis_total)", "legendFormat": "{{run_mode}} / Analysed", "refId": "B"}
+      ],
+      "title": "Received and analysed over time",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^demo / Received$", "renamePattern": "Live model / Received"}},
+        {"id": "renameByRegex", "options": {"regex": "^demo / Analysed$", "renamePattern": "Live model / Analysed"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / Received$", "renamePattern": "Scripted test / Received"}},
+        {"id": "renameByRegex", "options": {"regex": "^fixture / Analysed$", "renamePattern": "Scripted test / Analysed"}}
+      ],
       "type": "timeseries"
     }
   ],
   "refresh": "15s",
   "schemaVersion": 39,
-  "tags": ["synthetic", "complaint-copilot"],
+  "tags": ["training", "complaint-copilot"],
   "templating": {"list": []},
   "time": {"from": "now-1h", "to": "now"},
   "timezone": "browser",
   "title": "Complaint Operations",
   "uid": "complaint-operations",
-  "version": 1
+  "version": 2
 }

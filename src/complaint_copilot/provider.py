@@ -2,18 +2,13 @@
 
 import json
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from contextvars import ContextVar
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
-from decimal import Decimal
 from typing import Protocol
 
 from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI
 
 from complaint_copilot.contracts import Stage
-from complaint_copilot.repository import LiveBudgetExhausted, SQLiteRepository
 
 
 @dataclass(frozen=True)
@@ -51,106 +46,18 @@ class Provider(Protocol):
     ) -> ProviderResponse: ...
 
 
-@dataclass
-class _LiveRequestContext:
-    request_key: str
-    next_call: int = 0
-
-
-_live_request_context: ContextVar[_LiveRequestContext | None] = ContextVar(
-    "live_request_context", default=None
-)
-
-
-@contextmanager
-def live_request_budget_context(request_key: str) -> Iterator[None]:
-    if not request_key.strip():
-        raise ValueError("live request key must be non-empty")
-    token = _live_request_context.set(_LiveRequestContext(request_key))
-    try:
-        yield
-    finally:
-        _live_request_context.reset(token)
-
-
-class LiveBudgetProvider:
-    """Reserve conservative per-attempt usage before any live provider call."""
-
-    def __init__(
-        self,
-        provider: Provider,
-        repository: SQLiteRepository,
-        *,
-        approval_id: str,
-        max_calls: int,
-        max_tokens: int,
-        max_cost_usd: Decimal,
-        max_output_tokens: int,
-        max_usd_per_1k_tokens: Decimal,
-    ) -> None:
-        self._provider = provider
-        self._repository = repository
-        self._approval_id = approval_id
-        self._max_calls = max_calls
-        self._max_tokens = max_tokens
-        self._max_cost_usd = max_cost_usd
-        self._max_output_tokens = max_output_tokens
-        self._max_usd_per_1k_tokens = max_usd_per_1k_tokens
-
-    def generate(
-        self,
-        stage: Stage | None,
-        model: str,
-        system_prompt: str,
-        user_prompt: str,
-    ) -> ProviderResponse:
-        context = _live_request_context.get()
-        if context is None:
-            raise RuntimeError("live provider call requires a budget request context")
-
-        call_index = context.next_call
-        context.next_call += 1
-        reserved_tokens = (
-            len(system_prompt.encode("utf-8"))
-            + len(user_prompt.encode("utf-8"))
-            + self._max_output_tokens
-        )
-        reserved_cost = (
-            Decimal(reserved_tokens) * self._max_usd_per_1k_tokens / Decimal(1000)
-        )
-        try:
-            self._repository.reserve_live_generation(
-                approval_id=self._approval_id,
-                generation_key=f"{context.request_key}:{call_index}",
-                reserved_tokens=reserved_tokens,
-                reserved_cost_usd=reserved_cost,
-                max_calls=self._max_calls,
-                max_tokens=self._max_tokens,
-                max_cost_usd=self._max_cost_usd,
-                now=datetime.now(UTC),
-            )
-        except LiveBudgetExhausted as error:
-            raise ProviderFailure("live_budget_exhausted", retryable=False) from error
-        return self._provider.generate(stage, model, system_prompt, user_prompt)
-
-
 class OpenAIProvider:
     def __init__(
         self,
         api_key: str,
         timeout_seconds: float,
         client: OpenAI | None = None,
-        *,
-        max_output_tokens: int = 1024,
     ) -> None:
-        if not 1 <= max_output_tokens <= 4096:
-            raise ValueError("max_output_tokens must be between 1 and 4096")
         self._client = client or OpenAI(
             api_key=api_key,
             timeout=timeout_seconds,
             max_retries=0,
         )
-        self._max_output_tokens = max_output_tokens
 
     def generate(
         self,
@@ -164,7 +71,6 @@ class OpenAIProvider:
             response = self._client.chat.completions.create(
                 model=model,
                 temperature=0,
-                max_completion_tokens=self._max_output_tokens,
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -287,7 +193,10 @@ class FixtureProvider:
                 ) from error
             if not isinstance(complaint, str) or not complaint:
                 raise ProviderFailure("fixture_input_invalid", retryable=False)
-            if source_sample_id == "synthetic-provider-timeout":
+            if source_sample_id in {
+                "synthetic-provider-timeout",
+                "test-provider-timeout",
+            }:
                 raise ProviderFailure("provider_timeout", retryable=False)
             if source_sample_id == "scene-2-controlled-raw-miss":
                 category, severity = "other", 3

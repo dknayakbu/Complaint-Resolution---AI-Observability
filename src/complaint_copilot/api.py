@@ -1,4 +1,4 @@
-"""Fixture-first FastAPI surface for synthetic complaint demonstrations."""
+"""Fixture-first FastAPI surface for complaint demonstrations."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import hashlib
 import os
 import secrets
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager, nullcontext
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -21,7 +21,7 @@ from fastapi.security import (
 )
 from pydantic import BaseModel, Field, field_validator
 
-from complaint_copilot.baseline import SingleCallBaseline
+from complaint_copilot.baseline import BASELINE_PROMPT_VERSION, SingleCallBaseline
 from complaint_copilot.contracts import (
     AdjudicatedLabel,
     AnalysisRequest,
@@ -38,6 +38,7 @@ from complaint_copilot.contracts import (
     Stage,
 )
 from complaint_copilot.demo_replay import (
+    measure_batch_drift,
     replay_cost,
     replay_drift,
     replay_quality,
@@ -49,17 +50,15 @@ from complaint_copilot.model_policy import StageModelPolicy
 from complaint_copilot.orchestrator import ComplaintOrchestrator
 from complaint_copilot.provider import (
     FixtureProvider,
-    LiveBudgetProvider,
     OpenAIProvider,
     Provider,
+    ProviderFailure,
     RetryingProvider,
-    live_request_budget_context,
 )
 from complaint_copilot.repository import (
     ConcurrentUpdate,
     IdempotencyConflict,
     InvalidCaseState,
-    LiveBudgetExhausted,
     RecordNotFound,
     RepositoryError,
     SQLiteRepository,
@@ -87,7 +86,7 @@ class IntakeBody(BaseModel):
     @classmethod
     def require_synthetic(cls, value: bool) -> bool:
         if not value:
-            raise ValueError("only synthetic complaints are accepted")
+            raise ValueError("only invented complaints are accepted")
         return value
 
 
@@ -123,6 +122,17 @@ class AdjudicationBody(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class BatchDriftBody(BaseModel):
+    case_ids: list[str] = Field(min_length=10)
+
+    @field_validator("case_ids")
+    @classmethod
+    def unique_case_ids(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("case IDs must be unique")
+        return value
+
+
 def create_app(
     settings: AppSettings | None = None,
     *,
@@ -132,26 +142,6 @@ def create_app(
     config = settings or AppSettings.from_env()
     repo = repository or SQLiteRepository(config.database_path)
     active_provider = provider or _provider_for(config)
-    if config.mode == "live":
-        if (
-            config.live_approval_id is None
-            or config.live_max_calls is None
-            or config.live_max_tokens is None
-            or config.live_max_cost_usd is None
-            or config.live_max_output_tokens is None
-            or config.live_max_usd_per_1k_tokens is None
-        ):
-            raise ValueError("live model budget settings are unavailable")
-        active_provider = LiveBudgetProvider(
-            active_provider,
-            repo,
-            approval_id=config.live_approval_id,
-            max_calls=config.live_max_calls,
-            max_tokens=config.live_max_tokens,
-            max_cost_usd=config.live_max_cost_usd,
-            max_output_tokens=config.live_max_output_tokens,
-            max_usd_per_1k_tokens=config.live_max_usd_per_1k_tokens,
-        )
     if provider is None:
         active_provider = RetryingProvider(
             active_provider, max_attempts=config.max_provider_attempts
@@ -174,9 +164,6 @@ def create_app(
         ),
         medium_input_max=(
             config.medium_input_max if config.medium_input_max is not None else 8_000
-        ),
-        live_rate_ceiling=(
-            config.live_max_usd_per_1k_tokens if config.mode == "live" else None
         ),
     )
 
@@ -207,13 +194,6 @@ def create_app(
         return {
             "mode": config.mode,
             "provider": "fixture" if config.mode == "fixture" else "openai",
-            "live_approved": str(config.live_model_approved).lower(),
-            "live_max_requests": str(config.live_max_requests or ""),
-            "live_max_calls": str(config.live_max_calls or ""),
-            "live_max_tokens": str(config.live_max_tokens or ""),
-            "live_max_cost_usd": str(config.live_max_cost_usd or ""),
-            "live_max_output_tokens": str(config.live_max_output_tokens or ""),
-            "live_max_usd_per_1k_tokens": str(config.live_max_usd_per_1k_tokens or ""),
             "warning": (
                 "Scripted fixture responses; not model behavior."
                 if config.mode == "fixture"
@@ -283,27 +263,13 @@ def create_app(
                 detail="source_sample_id fixture controls are unavailable in live mode",
             )
         try:
-            if config.mode == "live":
-                if config.live_approval_id is None or config.live_max_requests is None:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="live model approval settings are unavailable",
-                    )
-                _reserve_live_request(repo, config, idempotency_key)
-            with (
-                live_request_budget_context(idempotency_key)
-                if config.mode == "live"
-                else nullcontext()
-            ):
-                return workflow.process(
-                    complaint_text=body.complaint_text,
-                    idempotency_key=idempotency_key,
-                    source_sample_id=body.source_sample_id,
-                )
+            return workflow.process(
+                complaint_text=body.complaint_text,
+                idempotency_key=idempotency_key,
+                source_sample_id=body.source_sample_id,
+            )
         except IdempotencyConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
-        except LiveBudgetExhausted as error:
-            raise HTTPException(status_code=429, detail=str(error)) from error
         except (ValueError, RepositoryError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -440,23 +406,6 @@ def create_app(
                 status_code=422,
                 detail="source_sample_id fixture controls are unavailable in live mode",
             )
-        request_key = f"baseline:{secrets.token_urlsafe(18)}"
-        if config.mode == "live":
-            if config.live_approval_id is None or config.live_max_requests is None:
-                raise HTTPException(
-                    status_code=503,
-                    detail="live model approval settings are unavailable",
-                )
-            try:
-                _reserve_live_request(repo, config, request_key)
-            except LiveBudgetExhausted as error:
-                raise HTTPException(status_code=429, detail=str(error)) from error
-            except IdempotencyConflict as error:
-                raise HTTPException(status_code=409, detail=str(error)) from error
-            except RepositoryError:
-                raise HTTPException(
-                    status_code=503, detail="live request budget is unavailable"
-                ) from None
         request = AnalysisRequest(
             complaint_text=body.complaint_text,
             synthetic=True,
@@ -465,15 +414,15 @@ def create_app(
         decision = policy.resolve(Stage.CLASSIFICATION, {})
         model = decision.model
         baseline_provider = active_provider
-        with (
-            live_request_budget_context(request_key)
-            if config.mode == "live"
-            else nullcontext()
-        ):
+        try:
             result = SingleCallBaseline(baseline_provider, model).run(request)
+        except (ProviderFailure, ValueError, TypeError) as error:
+            raise HTTPException(
+                status_code=502, detail="baseline provider or output validation failed"
+            ) from error
         return {
             "mode": config.mode,
-            "baseline_prompt_version": "single-call-baseline-v1",
+            "baseline_prompt_version": BASELINE_PROMPT_VERSION,
             "result": result.as_mapping(),
         }
 
@@ -570,6 +519,45 @@ def create_app(
             )
             flush_telemetry()
         return {"accepted": True, "duplicate": not stored}
+
+    @app.post("/internal/demo/batch-drift")
+    def batch_drift(
+        body: BatchDriftBody,
+        idempotency_key: Annotated[
+            str, Header(alias="Idempotency-Key", min_length=1, max_length=200)
+        ],
+        internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
+    ) -> dict[str, object]:
+        _require_internal(internal_token, config.internal_token)
+        try:
+            complaints = [
+                {"complaint_text": repo.get_case(case_id)["complaint_text"]}
+                for case_id in body.case_ids
+            ]
+            result = measure_batch_drift(app.state.data_root, complaints)
+            digest = hashlib.sha256(
+                "\n".join(sorted(body.case_ids)).encode("utf-8")
+            ).hexdigest()
+            stored_result, created = repo.store_demo_replay(
+                idempotency_key=idempotency_key,
+                scenario=f"batch-drift:{digest}",
+                result=result,
+                now=datetime.now(UTC),
+            )
+        except RecordNotFound as error:
+            raise HTTPException(status_code=404, detail="case not found") from error
+        except IdempotencyConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        if created:
+            run_mode = RunMode.DEMO if config.mode == "live" else RunMode.FIXTURE
+            instruments.drift_scores.record(
+                float(result["score_base2_jsd"]),
+                {"run_mode": run_mode.value, "replay": "batch"},
+            )
+            flush_telemetry()
+        return {**stored_result, "duplicate": not created}
 
     @app.post("/internal/demo/replay/{scenario}")
     def replay(
@@ -713,9 +701,11 @@ def _record_replay_metrics(
     if scenario == "drift":
         scores = result.get("window_scores_base2_jsd")
         if isinstance(scores, list):
-            for value in scores:
+            for index, value in enumerate(scores, start=1):
                 if isinstance(value, (int, float)):
-                    instruments.drift_scores.record(float(value), labels)
+                    instruments.drift_scores.record(
+                        float(value), {**labels, "window": str(index)}
+                    )
         if result.get("warning_after_consecutive_windows") is True:
             instruments.drift_warnings.add(1, labels)
     elif scenario == "cost":
@@ -760,41 +750,14 @@ def _record_replay_metrics(
                         )
 
 
-def _reserve_live_request(
-    repository: SQLiteRepository, settings: AppSettings, request_key: str
-) -> None:
-    if (
-        settings.live_approval_id is None
-        or settings.live_max_requests is None
-        or settings.live_max_calls is None
-        or settings.live_max_tokens is None
-        or settings.live_max_cost_usd is None
-    ):
-        raise HTTPException(
-            status_code=503, detail="live model budget settings are unavailable"
-        )
-    repository.reserve_live_request(
-        approval_id=settings.live_approval_id,
-        max_requests=settings.live_max_requests,
-        max_calls=settings.live_max_calls,
-        max_tokens=settings.live_max_tokens,
-        max_cost_usd=settings.live_max_cost_usd,
-        request_key=request_key,
-        now=datetime.now(UTC),
-    )
-
-
 def _provider_for(settings: AppSettings) -> Provider:
     if settings.mode == "fixture":
         return FixtureProvider()
     if not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY is required for live provider mode")
-    if settings.live_max_output_tokens is None:
-        raise ValueError("LIVE_MODEL_MAX_OUTPUT_TOKENS is required in live mode")
     return OpenAIProvider(
         settings.openai_api_key,
         settings.request_timeout_seconds,
-        max_output_tokens=settings.live_max_output_tokens,
     )
 
 

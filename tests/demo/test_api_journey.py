@@ -266,14 +266,6 @@ def test_live_intake_uses_arbitrary_complaint_for_both_stages_without_fixture_id
         internal_token="live-internal",
         short_input_max=2_000,
         medium_input_max=8_000,
-        live_model_approved=True,
-        live_approval_id="test-live-dynamic-intake",
-        live_max_requests=1,
-        live_max_calls=2,
-        live_max_tokens=100_000,
-        live_max_cost_usd=Decimal("10"),
-        live_max_output_tokens=256,
-        live_max_usd_per_1k_tokens=Decimal("1"),
     )
     with TestClient(
         create_app(
@@ -311,14 +303,6 @@ def test_live_intake_rejects_fixture_controls_before_provider_call(
         internal_token="live-internal",
         short_input_max=2_000,
         medium_input_max=8_000,
-        live_model_approved=True,
-        live_approval_id="test-live-fixture-control",
-        live_max_requests=1,
-        live_max_calls=2,
-        live_max_tokens=100_000,
-        live_max_cost_usd=Decimal("10"),
-        live_max_output_tokens=256,
-        live_max_usd_per_1k_tokens=Decimal("1"),
     )
     with TestClient(
         create_app(
@@ -340,7 +324,7 @@ def test_live_intake_rejects_fixture_controls_before_provider_call(
     assert provider.calls == []
 
 
-def test_live_cost_uses_approved_rate_ceiling_for_configured_model(
+def test_live_cost_is_unknown_without_a_live_price_table(
     tmp_path: Path,
 ) -> None:
     complaint = "Synthetic grocery payment complaint."
@@ -378,14 +362,6 @@ def test_live_cost_uses_approved_rate_ceiling_for_configured_model(
         internal_token="live-internal",
         short_input_max=2_000,
         medium_input_max=8_000,
-        live_model_approved=True,
-        live_approval_id="test-live-cost-ceiling",
-        live_max_requests=1,
-        live_max_calls=2,
-        live_max_tokens=100_000,
-        live_max_cost_usd=Decimal("10"),
-        live_max_output_tokens=256,
-        live_max_usd_per_1k_tokens=Decimal("0.5"),
     )
     with TestClient(
         create_app(
@@ -402,8 +378,9 @@ def test_live_cost_uses_approved_rate_ceiling_for_configured_model(
 
     cost = response.json()["analyses"][0]["result"]["cost"]
     assert response.status_code == 201
-    assert cost["complete"] is True
-    assert cost["known_subtotal_usd"] == "0.035"
+    assert cost["complete"] is False
+    assert Decimal(cost["known_subtotal_usd"]) == 0
+    assert cost["unknown_reason"] == "usage_or_price_unknown"
 
 
 def test_classification_prompt_gives_live_model_the_shared_contract() -> None:
@@ -432,7 +409,11 @@ def test_classification_prompt_gives_live_model_the_shared_contract() -> None:
     assert "cards_payments" in system_prompt
     assert "discrimination" in system_prompt
     assert "model_severity" in system_prompt
+    assert "SEV1 is most urgent" in system_prompt
     assert "end is exclusive" in system_prompt
+    assert json.loads(provider.generate.call_args.args[3])["complaint_length"] == len(
+        "My debit card was charged twice."
+    )
 
 
 def test_generation_trace_attributes_include_served_model_and_usage() -> None:
@@ -621,14 +602,6 @@ def test_synthetic_replay_is_available_during_live_mode_without_provider_calls(
         openai_api_key="test-key-not-used",
         reviewer_token="test-reviewer-token",
         internal_token="test-internal-token",
-        live_model_approved=True,
-        live_approval_id="test-approval",
-        live_max_requests=1,
-        live_max_calls=2,
-        live_max_tokens=1000,
-        live_max_cost_usd=Decimal("1"),
-        live_max_output_tokens=128,
-        live_max_usd_per_1k_tokens=Decimal("1"),
         short_input_max=2000,
         medium_input_max=8000,
     )

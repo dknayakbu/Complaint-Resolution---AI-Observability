@@ -1,19 +1,42 @@
 # Dynamic live-demo observation guide
 
+For a shorter dashboard-focused presentation, use the
+[final two-scene guide](demo-observation-final.md).
+
 Follow these steps in order. Live mode sends invented complaint text to the
 configured OpenAI models and can incur charges. Use **fictional text only**,
-never real or personally identifiable customer information. Obtain approval
-and configure bounded live limits by following
-[Run an approved live-model demo](../../README.md#run-an-approved-live-model-demo)
-before starting. The example uses five requests and up to 18 provider attempts
-with two configured attempts per stage; adjust the approved limits if you
-change the steps or retry setting.
+never real or personally identifiable customer information. Follow
+[Run a live-model demo](../../README.md#run-a-live-model-demo) before starting.
+There is no application-level live-call or spending cap; provider account and
+model limits still apply and real charges can accrue.
+
+## Observed local run (11 November 2026)
+
+These are observations from one run, not guaranteed model outputs:
+
+| Check | Result |
+| --- | --- |
+| Live mode and baseline | API reported live/OpenAI; the single-call baseline returned a category, severity and draft. |
+| Routine two-stage case | Reached `awaiting_review` with a draft; after clarifying severity in the prompt, the model chose SEV3. |
+| Financial harm | Model SEV2 was promoted to effective SEV1 with `financial_harm_signal`. |
+| Feedback, adjudication, route | Feedback and an adjudicated label were saved; approval created exactly one simulated queue entry. These were exercised through the API. |
+| Negation and instruction injection | Both remained `awaiting_review`; the negated statement did not add a harm flag, and the instruction did not route the case. |
+| Replays | All four completed. Drift JSDs were 0.2672 and 0.5932; cost crossed at observation 6 (USD 0.280 example total); Q0/Q1 and SLO returned their labeled calculations. |
+| SLO | The live window reported `insufficient_sample`; replay results do not count as production SLO evidence. |
+| Jaeger | The harm trace contained classification and drafting spans with requested/served models and token counts. |
+| Prometheus | Both scrape targets were up; request, stage-call, token, safety-promotion, drift-warning and unknown-cost series were present. |
+| UI | The live banner and intake screen loaded, with no fixture ID or spending controls. Review and replay behavior was verified through the API; browser tab interaction timed out. |
+| Grafana | Health was OK and all three dashboard files were mounted, but the configured login was rejected by the existing Grafana database; dashboard rendering was not verified. Use the existing Grafana administrator credentials to inspect them. Changing `.env` alone does not reset a password already stored in the Grafana volume. |
+
+Model output can fail schema validation, including evidence offsets, and then
+the case correctly goes to `manual_required`; retry with a new fictional case
+if this occurs. Before the severity prompt was clarified, a routine complaint
+was predicted as SEV1, illustrating why reviewer judgment remains necessary.
 
 ## Before the demo
 
 1. Configure `.env` for `APP_MODE=live`, provider credentials, private reviewer
-   and internal tokens, an approval ID, and approved request/call/token/cost
-   limits.
+   and internal tokens, and ordered `SHORT_INPUT_MAX` and `MEDIUM_INPUT_MAX`.
 2. Start or rebuild services:
 
    ```powershell
@@ -25,8 +48,6 @@ change the steps or retry setting.
 3. Open <http://localhost:8000/api/mode>. Confirm it reports:
    - `mode`: `live`
    - `provider`: `openai`
-   - `live_approved`: `true`
-   - The approved request, call, token, and cost limits
 4. Open the UI at <http://localhost:8501>. Confirm it displays **LIVE MODE**.
    The intake form must not show a fixture ID field.
 5. Keep these result pages available:
@@ -44,12 +65,12 @@ change the steps or retry setting.
    $baseline = Invoke-RestMethod -Method Post `
      -Uri http://localhost:8000/api/baseline `
      -ContentType 'application/json' `
-     -Body '{"complaint_text":"My replacement debit card arrived late, but my current card still works.","synthetic":true}'
+     -Body '{"complaint_text":"My replacement debit card arrived late, but my current card still works."}'
    $baseline | ConvertTo-Json -Depth 8
    ```
 
 2. **Expected result:** the response reports `mode: live` and
-   `single-call-baseline-v1`. It uses one provider call when the first attempt
+   `single-call-baseline-v2`. It uses one provider call when the first attempt
    succeeds; a transient failure may consume a retry. This is a genuine
    single-call baseline, not a two-agent case.
 
@@ -70,8 +91,7 @@ change the steps or retry setting.
    severity may vary. A provider/schema failure is shown as `manual_required`,
    not replaced with a scripted result.
 5. Note the case ID, revision, effective severity and trace reference. One
-   successful case uses two provider calls; retries count against the approved
-   call limit.
+   successful case uses two provider calls; retries make additional calls.
 
 ### 3. Observe safety handling on a different complaint
 
@@ -128,13 +148,13 @@ change the steps or retry setting.
    Model predictions can vary; inspect the original prediction and effective
    severity rather than expecting a particular category or exact prose.
 
-### 7. Run the synthetic operations and quality replays
+### 7. Run the operations and quality replays
 
-1. Open **Synthetic replays** and run `drift`, `cost`, `quality`, and `slo` one
+1. Open **Replays** and run `drift`, `cost`, `quality`, and `slo` one
    at a time. These internal, deterministic replays are available in both
    fixture and live mode; they never call the configured model or consume the
-   live provider-call budget.
-2. **Expected result:** each response reports a synthetic calculation, and
+   provider.
+2. **Expected result:** each response reports an example calculation, and
    live-mode replay metrics are tagged `run_mode=demo`:
    - Drift returns window scores and shift-warning status.
    - Cost returns a threshold crossing and replay total, not a provider bill.
@@ -157,25 +177,31 @@ change the steps or retry setting.
    added as a span attribute.
 3. In Prometheus, open **Status → Targets** at
    <http://localhost:9090/targets>. Confirm the scrape targets are up.
+   In **Graph**, query `llm_calls_total`, `llm_tokens_total`,
+   `complaint_requests_total`, `complaint_safety_promotions_total` and
+   `llm_cost_unknown_total`. Allow time for export and scraping.
 4. In Grafana, inspect **Complaint Operations**, **Safety and Quality**, and
-   **Drift and Incident**.
+   **Drift and Incident** using the credentials already established for the
+   persistent Grafana database. The first board shows workflow volume, outcomes,
+   stage activity and recent duration. The second shows safety flags, human
+   routing and replay SEV1 recall. The third compares replay drift
+   windows and SLO phases, replay warnings, inbox events, scrape health and
+   unknown costs. Run the corresponding replays after an API restart.
 5. **Expected result:** successful workflow requests increase request and
-   stage-call counts; token metrics appear when usage is returned. Live cost
-   is conservatively estimated at the approved rate ceiling, not the actual
-   provider bill. If retries occurred and earlier usage is unavailable, the
-   stage cost is shown as unknown. Verify the configured ceiling against
-   current provider rates before presenting dollar values.
+   stage-call counts; token metrics appear when usage is returned. Live cost is
+   unknown without a configured live price table; consult provider billing.
+   Retry usage is unknown when earlier attempt usage is unavailable.
 
-### 9. Review limits and fixture-only checks
+### 9. Review mode and fixture-only checks
 
-1. Check the UI's visible live budget and the API's `/api/mode` response.
-   **Expected result:** requests beyond the approved request, attempt, token,
-   or cost cap are rejected before another provider attempt.
+1. Check the UI's live warning and the API's `/api/mode` response.
+   **Expected result:** no application spending limits or approval fields are
+   displayed or enforced. Provider account limits may still apply.
 2. Do not use `scene-2-controlled-raw-miss` in live mode. It is a hard-coded
    `FixtureProvider` behavior in `src/complaint_copilot/provider.py`; live mode
    rejects fixture IDs and sends no fixture ID to OpenAI. Arbitrary live text
    is classified by the selected model, so results vary.
-3. Do not use `synthetic-provider-timeout` in live mode. The automatic
+3. Do not use `test-provider-timeout` in live mode. The automatic
    `scripts\demo_rehearsal.py` is a fixture-only integration test and must be
    run only when `/api/mode` reports fixture mode.
 4. **Expected result:** live execution proves provider integration for the
@@ -184,8 +210,7 @@ change the steps or retry setting.
 
 ## Return to fixture mode or stop
 
-To return to the safe default, set `APP_MODE=fixture` and
-`LIVE_MODEL_APPROVED=false` in `.env`, then run:
+To return to the safe default, set `APP_MODE=fixture` in `.env`, then run:
 
 ```powershell
 docker compose up -d --build api ui

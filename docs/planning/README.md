@@ -74,8 +74,8 @@ The handoffs are ordinary Markdown task briefs, not automatically loaded Copilot
 - Synthetic data, human approval and simulated queues only.
 - Stage-based model selection is evaluated; no response cache, Redis, extra agent framework, release engineering, CI/CD or Kubernetes.
 - Tests use fakes without credentials; fixture output is visibly labeled.
-- Live OpenAI/judge calls require separate explicit approval and maximum call/token/cost budgets.
-- PR-I can provide non-live integration evidence before spending approval; live-demo gates remain pending until genuinely verified. No fake live success.
+- Live OpenAI calls have no application spending caps; provider charges and limits apply.
+- Fixture integration evidence does not substitute for genuinely verified live-demo evidence.
 - Three builders do not replace the assignment's six-member document/presentation/demo participation requirement.
 
 ## Status of this pack

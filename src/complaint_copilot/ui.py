@@ -1,4 +1,4 @@
-"""Streamlit interface for the synthetic complaint and reviewer journey."""
+"""Streamlit interface for the complaint and reviewer journey."""
 
 from __future__ import annotations
 
@@ -57,21 +57,12 @@ def main() -> None:
         st.stop()
 
     if mode["mode"] == "fixture":
-        st.warning(
-            "FIXTURE MODE — scripted synthetic responses; not an OpenAI/model demo."
-        )
+        st.warning("FIXTURE MODE — scripted responses; not an OpenAI/model demo.")
     else:
         st.error(
-            "LIVE MODE — synthetic text is sent to OpenAI and calls may cost money."
+            "LIVE MODE — invented text is sent to OpenAI and calls may cost money."
         )
-        st.caption(
-            "Approved limits: "
-            f"{mode['live_max_requests']} workflow requests, "
-            f"{mode['live_max_calls']} provider attempts, "
-            f"{mode['live_max_tokens']} reserved tokens, "
-            f"USD {mode['live_max_cost_usd']} reserved cost. "
-            "A successful complaint normally requires two provider calls."
-        )
+        st.caption("A successful complaint normally requires two provider calls.")
 
     try:
         model_policy = _request("GET", "/api/model-policy")
@@ -92,7 +83,7 @@ def main() -> None:
         st.sidebar.error(f"Runtime status unavailable: {error}")
 
     intake_tab, review_tab, replay_tab, alerts_tab = st.tabs(
-        ["Complaint intake", "Reviewer queue", "Synthetic replays", "Alert inbox"]
+        ["Complaint intake", "Reviewer queue", "Replays", "Alert inbox"]
     )
     with intake_tab:
         _intake(live_mode=mode["mode"] == "live")
@@ -110,9 +101,9 @@ def _intake(*, live_mode: bool = False) -> None:
             "Live mode sends this invented complaint to the configured OpenAI "
             "classification and drafting models. Fixture controls are disabled."
         )
-        complaint_label = "Synthetic complaint sent to live models"
+        complaint_label = "Complaint sent to live models"
     else:
-        complaint_label = "Synthetic complaint text"
+        complaint_label = "Complaint text"
     complaint = st.text_area(
         complaint_label,
         placeholder="Enter an invented complaint; do not enter customer data.",
@@ -121,14 +112,14 @@ def _intake(*, live_mode: bool = False) -> None:
     source_sample_id = None
     if not live_mode:
         source_sample_id = st.text_input(
-            "Optional synthetic fixture ID",
+            "Optional fixture ID",
             help="Use scene-2-controlled-raw-miss to rehearse a controlled "
-            "classification miss, or synthetic-provider-timeout for a fixture "
+            "classification miss, or test-provider-timeout for a fixture "
             "failure.",
         )
     if st.button("Submit for analysis", type="primary"):
         if not complaint.strip():
-            st.error("Enter non-empty synthetic complaint text.")
+            st.error("Enter non-empty complaint text.")
             return
         try:
             case = _request(
@@ -146,7 +137,7 @@ def _intake(*, live_mode: bool = False) -> None:
                 headers={"Idempotency-Key": str(uuid.uuid4())},
             )
             st.session_state["selected_case"] = case["case_id"]
-            st.success(f"Saved synthetic case {case['case_id']}")
+            st.success(f"Saved case {case['case_id']}")
             _show_case(case, view="intake")
         except RuntimeError as error:
             st.error(str(error))
@@ -172,7 +163,7 @@ def _review() -> None:
         _show_case(case, view="review")
         latest = case["analyses"][-1]
         classification = latest["result"]["classification"]
-        reason = st.text_input("Review reason", value="Synthetic training review.")
+        reason = st.text_input("Review reason", value="Training review.")
         if st.button("Approve current revision and route"):
             try:
                 routed = _request(
@@ -261,6 +252,7 @@ def _feedback_and_adjudication(case: dict[str, Any], latest: dict[str, Any]) -> 
         "service_access",
         "lending",
         "fraud_scams",
+        "discrimination",
         "other",
     ]
     result = latest["result"]
@@ -291,8 +283,8 @@ def _feedback_and_adjudication(case: dict[str, Any], latest: dict[str, Any]) -> 
                     "category": category,
                     "severity": severity,
                     "queue": category,
-                    "draft_rubric_assessment": "Synthetic reviewer assessment.",
-                    "reason": "Synthetic demo adjudication.",
+                    "draft_rubric_assessment": "Training reviewer assessment.",
+                    "reason": "Training adjudication.",
                 },
                 headers={"Authorization": f"Bearer {REVIEWER_TOKEN}"},
             )
@@ -304,7 +296,7 @@ def _feedback_and_adjudication(case: dict[str, Any], latest: dict[str, Any]) -> 
 
 
 def _replays() -> None:
-    st.caption("Every replay uses synthetic fixtures and existing Phase B/C logic.")
+    st.caption("Replays use scripted fixtures and existing Phase B/C logic.")
     columns = st.columns(4)
     for column, scenario in zip(
         columns, ("drift", "cost", "quality", "slo"), strict=True
@@ -326,8 +318,8 @@ def _replays() -> None:
 
 
 def _alerts() -> None:
-    st.caption("Synthetic local inbox only; no external notification is sent.")
-    if st.button("Send a synthetic firing alert"):
+    st.caption("Local test inbox only; no external notification is sent.")
+    if st.button("Send a test firing alert"):
         try:
             result = _request(
                 "POST",
@@ -336,11 +328,11 @@ def _alerts() -> None:
                     "fingerprint": f"ui-demo-{uuid.uuid4()}",
                     "status": "firing",
                     "priority": "P2",
-                    "title": "Synthetic demo alert",
+                    "title": "Test alert",
                 },
                 headers={"X-Internal-Token": INTERNAL_TOKEN},
             )
-            st.success(f"Synthetic alert accepted: {result}")
+            st.success(f"Test alert accepted: {result}")
         except RuntimeError as error:
             st.error(str(error))
     try:
@@ -384,7 +376,7 @@ def _show_case(case: dict[str, Any], *, view: str) -> None:
                 else "known subtotal; some cost is unknown"
             )
             pricing_basis = (
-                "at the approved live rate ceiling"
+                "live price unconfigured"
                 if result.get("run_mode") == "demo"
                 else "using fixture pricing"
             )

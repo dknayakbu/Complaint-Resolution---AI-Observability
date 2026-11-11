@@ -13,9 +13,9 @@ from complaint_copilot.provider import Provider, ProviderResponse
 
 DRAFTING_PROMPT_VERSION = "drafting-prompt-v1"
 DRAFTING_SCHEMA_VERSION = "drafting-schema-v1"
-FIXED_WORDING_VERSION = "synthetic-training-wording-v1"
+FIXED_WORDING_VERSION = "training-wording-v2"
 FIXED_WORDING = (
-    "This acknowledgement is for synthetic training use only. It is not a "
+    "This acknowledgement is for training use only. It is not a "
     "substantive response or confirmation that your concern has been resolved."
 )
 

@@ -57,8 +57,8 @@ requirement; an independently selected blind incident; external paging; or a
 production-calibrated SLO/model-quality comparison. The verified incident is a
 known deterministic fixture fault, not an organic provider outage. Therefore
 this is a verified local synthetic journey, not a claim that the full live
-demo or every Scene 0-6 acceptance criterion is complete. Live OpenAI use
-remains unapproved and was not attempted.
+demo or every Scene 0-6 acceptance criterion is complete. This paragraph
+describes the earlier fixture rehearsal; see the observation guide for later live results.
 
 ## 1. Purpose, scope and honesty rules
 
@@ -188,7 +188,7 @@ individually rather than inferred from the existing files.
 | `data\demo\faults.json` | Named synthetic fault scenarios and expected safe outcomes, scoped by case/revision or next operation | A's controlled adapter, not production dependency manipulation |
 | `data\demo\review_actions.jsonl` | Actors/roles, rating, correction, reason, expected revision | Repeatable annotation/adjudication tests; roles are demo identities |
 | `data\demo\deadline_cases.jsonl` | Received/approved timestamps, training-calendar version and fixed fixture clock | Overdue and business-calendar rehearsal only |
-| `data\demo\manifest.json` | Dataset/hash/version, model/prompt/schema/policy/price versions, scene inputs, baseline IDs, expected checks, actual command mapping and call cap | Reproducibility and checkpoint record; integration owner maintains |
+| `data\demo\manifest.json` | Dataset/hash/version, model/prompt/schema/policy/price versions, scene inputs, baseline IDs, expected checks and actual command mapping | Reproducibility and checkpoint record; integration owner maintains |
 
 ### Required fields and labels
 
@@ -427,7 +427,7 @@ Use the approved 30-case holdout for model-policy comparison, not the 12 develop
 - Run baseline/candidate order in a balanced/interleaved way where practical; disclose provider variance and small samples.
 - Promotion requires the implementation plan's safety/wording/quality gates, not just cheaper tokens.
 - If T is worse, show rejection. That is successful operational control, not a failed demo.
-- A frozen prior experiment may be opened during the main presentation with its timestamp/version/call budget. Identify it as recorded evidence, not newly live execution.
+- A frozen prior experiment may be opened during the main presentation with its timestamp and version. Identify it as recorded evidence, not newly live execution.
 
 Optional tone-only experiment uses the same already validated classification context and two drafting prompts. Do not rerun or change classification and claim a pure tone-only comparison if other variables changed.
 
@@ -445,7 +445,7 @@ These counts exclude retries, smoke checks and optional judges:
 | Two tone drafts on one frozen validated context | 2 drafting calls |
 | Raw-input drift or typed stage/result replay | 0 OpenAI calls |
 
-Approve actual provider/model access, budget and maximum attempts separately before execution. Use selected model prices and bounded token settings, not an invented dollar budget. A rejected/failed attempt may still have unknown billed usage; stop at the conservative run cap.
+Live calls can incur provider charges and have no application spending caps. A rejected or failed attempt may still have unknown billed usage; consult provider billing.
 
 ## 9. Presenter ownership and screen choreography
 
@@ -510,7 +510,7 @@ An application-only API alert inbox cannot deliver if that application is down. 
 
 | Problem | Honest action |
 | --- | --- |
-| OpenAI unavailable or budget denied | Explain the limitation; demonstrate the explicit fixture path and request facilitator acceptance; do not call it the required genuine live model demo |
+| OpenAI unavailable | Explain the limitation; demonstrate the explicit fixture path and request facilitator acceptance; do not call it the required genuine live model demo |
 | No Grafana movement | Check mode/filter, latest scrape and instrument name/type, then source records; stop treating the scene as passed |
 | Drift never fires | Confirm feature counts, eligible non-overlapping windows and rule scope; no threshold editing after seeing results |
 | Cost spike never fires | Confirm same comparison cohort, known usage, frozen baseline, recent count and derived ratio |
@@ -558,7 +558,7 @@ rerun green, then integrate. The real local-stack alert-delivery path is
 verified; the scripted direct-inbox test remains a separate idempotency check
 and is not substituted for Grafana-to-webhook delivery.
 
-Broader gate after focused tests: existing contract/full non-live test suite, Ruff/mypy, Compose validation, then G1-G3 integration from the main plan. Only then separately approve and perform live-model checks. A successful replay is not a substitute for the genuine normal-request requirement.
+Broader gate after focused tests: existing contract/full non-live test suite, Ruff/mypy, Compose validation, then G1-G3 integration from the main plan and live-model checks. A successful replay is not a substitute for the genuine normal-request requirement.
 
 ## 12. Evidence to retain and definition of success
 
@@ -570,7 +570,7 @@ For each executed scene retain in restricted/local approved storage:
 - Human label/reason and audit revision, never an overwritten original prediction.
 - Alert rule/version, firing/resolved delivery and incident timeline.
 - Runbook containment, fresh recovery proof and remaining historical breaches.
-- Actual test commands/results, approved call cap and observed usage/cost completeness.
+- Actual test commands/results and observed usage/cost completeness.
 
 The demo is ready when:
 
@@ -587,8 +587,7 @@ The demo is ready when:
 
 **Current implementation status:** the local synthetic fixture journey and
 repository checks described at the top are verified. The demo is not ready to
-claim the full planned success criteria until a separately approved live
-two-stage request and an independently selected blind
-incident/containment/recovery rehearsal are demonstrated and retained as
+claim the full planned success criteria until an independently selected blind
+incident/containment/recovery rehearsal is demonstrated and retained as
 evidence. Automatic Grafana alert delivery is verified locally but does not
 provide an external paging channel.

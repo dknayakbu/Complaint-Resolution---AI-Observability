@@ -70,6 +70,6 @@ Before merging PR-A, update from current `main`, then also run `uv run pytest -q
 
 ### Stop and report
 
-Do not invoke OpenAI, judges, production services or paid evaluations without separate explicit approval and a bounded budget. Do not touch B/C-owned files to get tests green. Report contract mismatches instead.
+Live calls can incur provider charges and have no application spending caps. Do not invoke production services or touch B/C-owned files to get tests green. Report contract mismatches instead.
 
 Hand off owned changes in the separate PR, actual red/green commands/results, startup instructions, sample fixture API request/response, open integration seams and risks. Show the UI's fixture-mode indicator; do not call it a live model demo. Do not merge a failing PR or push module changes directly to `main`.

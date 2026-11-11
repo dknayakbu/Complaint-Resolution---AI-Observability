@@ -436,7 +436,7 @@ Track processing latency separately from time waiting for human approval. Label 
 | Acknowledgement quality | Fixed wording passes 100%; no unsupported-promise failures; human mean tone score at least 4/5 | Human rubric, sample coverage and disagreement must be shown |
 | Review evidence | Every approved/corrected case has an actor, reason where required, and revision lineage | Review coverage is shown separately from correctness |
 | Latency | Measure single-call baseline and two-stage target separately, then declare the target's numeric p95 budget; a later prompt variant must not be more than 20% worse without justification | Two stages need not match single-call latency; disclose their overhead rather than claiming instrumentation caused it |
-| Cost | Declare a complete-analysis budget covering both stages and bounded retries before live evaluation; show per-stage and total estimates | Not an OpenAI invoice; unknown usage is visible |
+| Cost | Show per-stage token usage and any available estimates | Not an OpenAI invoice; unknown usage is visible |
 | Operational analysis success | Target at least 99% non-manual-error analysis for routine valid inputs in a defined steady-state rehearsal window | Human-required safety review is not a provider failure; fault traffic is separate |
 | Deadline tracking | No approved training-fixture deadline breach unnoticed; urgent backlog is visible | The co-pilot does not deliver substantive resolution, so it cannot claim the 8-week business outcome |
 
@@ -710,7 +710,7 @@ For every row: write the named test -> run and observe the intended failure -> i
 | 7 | `test_trace_and_metrics_redact_payloads`, component, `tests\test_telemetry.py` | In-memory exporter/registry; normal and failure flows; expected spans/counters, no fixture secrets/text | Explicit OTel/log/metric instrumentation | `uv run pytest tests\test_telemetry.py -q` |
 | 8 | `test_feedback_preserves_revision_and_counts_miss_once`, integration, `tests\test_feedback_eval.py` | Known labels and repeated correction processing; raw/effective recall denominators and immutable history | Feedback lineage and metric/eval calculations | `uv run pytest tests\test_feedback_eval.py -q` |
 | 9 | `test_drift_requires_eligible_samples`, unit, `tests\test_drift.py` | Fixed distributions and low counts; known JSD, window eligibility, no false healthy state | Distribution/window computation | `uv run pytest tests\test_drift.py -q` |
-| 10 | Optional `test_tone_comparison_cannot_change_live_case`, unit/integration, `tests\test_tone_comparison.py` | Frozen validated context; both prompts get same input, fixed block unchanged; comparison writes evaluation records only and respects call budget | Explicit runner comparison mode; no live traffic controller | `uv run pytest tests\test_tone_comparison.py -q` |
+| 10 | Optional `test_tone_comparison_cannot_change_live_case`, unit/integration, `tests\test_tone_comparison.py` | Frozen validated context; both prompts get same input, fixed block unchanged; comparison writes evaluation records only | Explicit runner comparison mode; no live traffic controller | `uv run pytest tests\test_tone_comparison.py -q` |
 | 11 | `test_demo_controls_reject_non_synthetic_requests`, API, `tests\test_demo_controls.py` | Role, mode, data declaration and bounded fault activation | Isolated fault-control boundary | `uv run pytest tests\test_demo_controls.py -q` |
 | 12 | `test_normal_review_and_alert_journey`, browser/stack, `tests\e2e\test_demo_journey.py` | Local UI/API/storage/telemetry, controlled provider initially; intake, review, dashboard export and alert receipt | Thin UI wiring and stack integration | `uv run pytest tests\e2e\test_demo_journey.py -q` |
 | B1 | `test_cost_rollup_anomaly_and_model_policy`, unit, `tests\phase_b\test_cost_policy.py` | Fixed usage/prices, unknown usage, 15+8 costs and explicit stage models; correct totals, eligibility and no severity shortcut | B's pure cost/model-policy functions | `uv run pytest tests\phase_b -q` |
@@ -744,19 +744,19 @@ Only after deterministic checks pass:
 
 1. Bring up the isolated Compose stack; verify readiness and metric/trace delivery.
 2. Run mock-backed browser E2E.
-3. Obtain explicit approval for a bounded live OpenAI smoke test and evaluation budget.
+3. Configure live OpenAI access; calls may incur charges.
 4. Execute real-model normal flow and controlled paired quality evaluation.
 5. Run synthetic fault workloads and a separately chosen incident; verify alert receipt, diagnosis, containment, and fresh recovery.
 6. Rehearse with the exact demo laptop and six presenters.
 
-Live commands must require `--allow-live-model`, an approved maximum call/token/cost budget, and a hard stop when exhausted. One pass over the 30-case holdout needs up to 60 normal calls for the two-stage workflow; comparing fixed versus stage-tiered two-stage policies needs up to 120; separately comparing single-call versus two-stage needs up to 90. These are alternative experiment budgets, not automatic commands to run all experiments. Retries/judges add calls. Expanded 150-case, three-repeat architecture comparison is optional and can use 1,350 normal calls. Start with a bounded pilot. Provider choice is not spending approval.
+One pass over the 30-case holdout needs up to 60 normal calls for the two-stage workflow; comparing fixed versus stage-tiered two-stage policies needs up to 120; separately comparing single-call versus two-stage needs up to 90. Retries and judges add calls. The application does not enforce spending caps; provider charges and limits apply.
 
 ### 9.3 Exception record and residual evidence
 
 - **Current task is documentation-only:** no runtime red test is meaningful because no code is being created. Alternative evidence is assignment traceability, confirmed design decisions, diagram/Markdown structural checks, and consistency review.
 - **Human tone assessment:** exact deterministic prose tests are not valid evidence of tone. Use a frozen rubric, blinded baseline/candidate scoring, adjudication and reported variation; deterministic tests still protect schemas and strict wording.
-- No live OpenAI requests, privileged changes, load tests, or induced external outages are authorized by this plan.
-- Remaining evidence gap: an approved baseline, implemented tests, measured budgets and functioning live stack do not exist yet.
+- This historical planning record is not evidence that a particular live request or incident was observed.
+- See the current demo observation guide for verified results and remaining gaps.
 
 ## 10. Three parallel phases, Copilot handoffs and integration
 
@@ -823,7 +823,7 @@ Each owner maintains its own branch and PR with changed owned files, exact comma
 | G1 - Fixture integration | A, B and C local contract exits complete | Replace A's fakes with B/C modules; one fixture goes API -> classification -> draft -> persistence -> evaluation -> annotation -> metrics without schema translation hacks |
 | G2 - Telemetry and operations | G1 | Trace contains both stages; costs reconcile; SLI unknown/sample rules work; Grafana firing/resolved webhook creates one incident episode in A's inbox |
 | G3 - Safety and feedback | G1, G2 | Covered underclassification remains visible; effective urgent review prevents unsafe action; feedback + eval merge into one revision-linked item; reviewer correction creates one versioned label and re-evaluation sees it |
-| G4 - Bounded live demo | G3 and explicit spend approval | Genuine two-call request, stage/model evidence and human-approved simulated routing; evaluate the proposed model mapping on frozen cases before enabling it |
+| G4 - Live demo | G3 and configured provider | Genuine two-call request, stage/model evidence and human-approved simulated routing; evaluate the proposed model mapping on frozen cases before enabling it |
 | G5 - Incident defense | G4 | Independently selected provider/quality/cost fault -> detection -> diagnosis -> containment -> fresh recovery; no answer supplied by the injector panel |
 
 Do not use G4 to discover basic schema incompatibility. If a candidate tiered mapping fails quality gates, keep the approved mapping and show the rejected comparison rather than hiding the regression.
@@ -849,7 +849,7 @@ All three module branches start together after PR-0. This merge order does not r
 | **PR-A** / `feat/phase-a-workflow` / A | Merged PR-0; core workflow/API/UI/storage and application Dockerfile; injected fixture adapters for B/C | Contract + A focused tests from its handoff; invalid input, stage ordering, safety, partial failure, authorized review, idempotency/restart; fixture UI/API smoke; full currently available suite and static checks. Live mode must not pretend fakes are production dependencies. |
 | **PR-B** / `feat/phase-b-agentops` / B | Starts from PR-0; refresh branch against `main` after PR-A merges; only B-owned modules/configuration | Contract + B/telemetry tests; price/anomaly/budget/capacity fixtures; redaction; Compose configuration; four-backend telemetry smoke and bounded test webhook receiver; full current suite and static checks. A's fake adapters remain until PR-I wiring. |
 | **PR-C** / `feat/phase-c-evaluation-feedback` / C | Starts from PR-0; refresh against `main` after PR-A and PR-B merge; only C-owned logic/data | Contract + C/evaluation/drift tests; raw/label split, family leakage and human-adjudication status; correct denominators/unknowns; merged annotation candidate; fixture runner; full current suite and static checks. No live-agent imports needed for C's unit tests. |
-| **PR-I** / `feat/integration-demo` / A leads; B/C review | Branch only after PR-A/B/C merge; wire real modules, persisted status export, alert inbox and complete UI journeys | Full non-live suite, types/lint/format, Compose validation and G1-G3 end-to-end stack evidence. G4/G5 require explicit bounded live-call approval before claiming demo readiness; if approval is absent, mark those gates pending, not passed. |
+| **PR-I** / `feat/integration-demo` / A leads; B/C review | Branch only after PR-A/B/C merge; wire real modules, persisted status export, alert inbox and complete UI journeys | Full non-live suite, types/lint/format, Compose validation and G1-G3 end-to-end stack evidence. Claim live-demo readiness only when G4/G5 have been verified. |
 
 Before each merge: fetch current `main`, merge it into the feature branch using ordinary non-destructive Git workflow, resolve changes with the relevant owners, rerun the gates on the exact final commit, and obtain review. If the branch changes again, previous test evidence is stale. No force pushes, discarded work or bypassed failing checks.
 

@@ -106,6 +106,6 @@ Only the first three must exist in the initial bootstrap; B/C add the latter vec
 
 Common command after PR-0: `uv run pytest tests\contracts -q`. If shared types/configuration are absent, stop and request the merged foundation instead of inventing another scaffold.
 
-All phases first test their functions with these fixtures. No live OpenAI calls until separate explicit approval with a maximum call/token/cost budget. Before live integration, remove fixture adapters from live configuration and verify G1-G3 in the plan. Contract v1 agreement is not a substitute for runtime proof.
+All phases first test their functions with these fixtures. Live mode uses the configured provider, not fixture adapters, and has no application spending caps. Contract v1 agreement is not a substitute for runtime proof.
 
 Each PR must pass its phase tests plus the full currently available suite and static checks on the final updated commit. Final wiring is a separate PR-I after all module PRs merge. Refer to Section 10.7 of the plan for exact per-PR gates; no CI/CD pipeline is required.

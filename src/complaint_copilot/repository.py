@@ -43,10 +43,6 @@ class InvalidCaseState(RepositoryError):
     pass
 
 
-class LiveBudgetExhausted(RepositoryError):
-    pass
-
-
 def to_wire(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -122,8 +118,6 @@ class SQLiteRepository:
             for version, filename in (
                 (1, "001_initial.sql"),
                 (2, "002_demo_replays.sql"),
-                (3, "003_live_run_budget.sql"),
-                (4, "004_live_usage_budget.sql"),
             ):
                 applied = connection.execute(
                     "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
@@ -137,153 +131,6 @@ class SQLiteRepository:
                         "VALUES(?, ?)",
                         (version, datetime.now().astimezone().isoformat()),
                     )
-
-    def reserve_live_request(
-        self,
-        *,
-        approval_id: str,
-        max_requests: int,
-        max_calls: int,
-        max_tokens: int,
-        max_cost_usd: Decimal,
-        request_key: str,
-        now: datetime,
-    ) -> bool:
-        if not approval_id.strip() or not request_key.strip():
-            raise ValueError("live approval ID and request key must be non-empty")
-        if type(max_requests) is not int or not 1 <= max_requests <= 10:
-            raise ValueError("live request limit must be between 1 and 10")
-        if type(max_calls) is not int or not 1 <= max_calls <= 60:
-            raise ValueError("live call limit must be between 1 and 60")
-        if type(max_tokens) is not int or max_tokens < 1:
-            raise ValueError("live token limit must be positive")
-        if not max_cost_usd.is_finite() or max_cost_usd <= 0:
-            raise ValueError("live cost limit must be positive and finite")
-        with self._transaction() as connection:
-            connection.execute(
-                "INSERT OR IGNORE INTO live_run_budgets"
-                "(approval_id, max_requests, used_requests, max_calls, used_calls, "
-                "max_tokens, used_tokens, max_cost_usd, used_cost_usd) "
-                "VALUES (?, ?, 0, ?, 0, ?, 0, ?, '0')",
-                (
-                    approval_id,
-                    max_requests,
-                    max_calls,
-                    max_tokens,
-                    str(max_cost_usd),
-                ),
-            )
-            budget = connection.execute(
-                "SELECT max_requests, used_requests, max_calls, max_tokens, "
-                "max_cost_usd FROM live_run_budgets "
-                "WHERE approval_id=?",
-                (approval_id,),
-            ).fetchone()
-            if budget is None:
-                raise RepositoryError("live request budget could not be loaded")
-            if (
-                budget["max_requests"] != max_requests
-                or budget["max_calls"] != max_calls
-                or budget["max_tokens"] != max_tokens
-                or budget["max_cost_usd"] != str(max_cost_usd)
-            ):
-                raise IdempotencyConflict(
-                    "live approval ID is already bound to different budget limits"
-                )
-            existing = connection.execute(
-                "SELECT 1 FROM live_request_reservations "
-                "WHERE approval_id=? AND request_key=?",
-                (approval_id, request_key),
-            ).fetchone()
-            if existing is not None:
-                return False
-            if budget["used_requests"] >= max_requests:
-                raise LiveBudgetExhausted("approved live request limit is exhausted")
-            connection.execute(
-                "INSERT INTO live_request_reservations"
-                "(approval_id, request_key, created_at) VALUES (?, ?, ?)",
-                (approval_id, request_key, to_wire(now)),
-            )
-            connection.execute(
-                "UPDATE live_run_budgets SET used_requests=used_requests+1 "
-                "WHERE approval_id=?",
-                (approval_id,),
-            )
-            return True
-
-    def reserve_live_generation(
-        self,
-        *,
-        approval_id: str,
-        generation_key: str,
-        reserved_tokens: int,
-        reserved_cost_usd: Decimal,
-        max_calls: int,
-        max_tokens: int,
-        max_cost_usd: Decimal,
-        now: datetime,
-    ) -> None:
-        if not approval_id.strip() or not generation_key.strip():
-            raise ValueError("live approval ID and generation key must be non-empty")
-        if type(reserved_tokens) is not int or reserved_tokens < 1:
-            raise ValueError("reserved token count must be positive")
-        if not reserved_cost_usd.is_finite() or reserved_cost_usd < 0:
-            raise ValueError("reserved generation cost must be finite and non-negative")
-        with self._transaction() as connection:
-            budget = connection.execute(
-                "SELECT max_calls, used_calls, max_tokens, used_tokens, "
-                "max_cost_usd, used_cost_usd FROM live_run_budgets "
-                "WHERE approval_id=?",
-                (approval_id,),
-            ).fetchone()
-            if budget is None:
-                raise RepositoryError("live request budget was not initialized")
-            if (
-                budget["max_calls"] != max_calls
-                or budget["max_tokens"] != max_tokens
-                or budget["max_cost_usd"] != str(max_cost_usd)
-            ):
-                raise IdempotencyConflict(
-                    "live approval ID is already bound to different budget limits"
-                )
-            duplicate = connection.execute(
-                "SELECT 1 FROM live_generation_reservations "
-                "WHERE approval_id=? AND generation_key=?",
-                (approval_id, generation_key),
-            ).fetchone()
-            if duplicate is not None:
-                raise IdempotencyConflict(
-                    "live generation attempt was already reserved"
-                )
-
-            next_tokens = budget["used_tokens"] + reserved_tokens
-            next_cost = Decimal(budget["used_cost_usd"]) + reserved_cost_usd
-            if budget["used_calls"] >= max_calls:
-                raise LiveBudgetExhausted(
-                    "approved live provider-call limit is exhausted"
-                )
-            if next_tokens > max_tokens:
-                raise LiveBudgetExhausted("approved live token limit would be exceeded")
-            if next_cost > max_cost_usd:
-                raise LiveBudgetExhausted("approved live cost limit would be exceeded")
-
-            connection.execute(
-                "INSERT INTO live_generation_reservations"
-                "(approval_id, generation_key, reserved_tokens, reserved_cost_usd, "
-                "created_at) VALUES (?, ?, ?, ?, ?)",
-                (
-                    approval_id,
-                    generation_key,
-                    reserved_tokens,
-                    str(reserved_cost_usd),
-                    to_wire(now),
-                ),
-            )
-            connection.execute(
-                "UPDATE live_run_budgets SET used_calls=used_calls+1, "
-                "used_tokens=?, used_cost_usd=? WHERE approval_id=?",
-                (next_tokens, str(next_cost), approval_id),
-            )
 
     def store_demo_replay(
         self,

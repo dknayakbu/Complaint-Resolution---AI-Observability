@@ -44,7 +44,7 @@ from complaint_copilot.contracts import (
     StageUsageEvent,
     TokenUsage,
 )
-from complaint_copilot.cost import CostError, PricingRule, calculate_usage_cost
+from complaint_copilot.cost import CostError, calculate_usage_cost
 from complaint_copilot.feedback import merge
 from complaint_copilot.instrumentation import flush_telemetry, instruments, tracer
 from complaint_copilot.policy import (
@@ -60,8 +60,6 @@ Clock = Callable[[], datetime]
 
 
 def _failure_code(error: ProviderFailure) -> FailureCode:
-    if error.code == "live_budget_exhausted":
-        return FailureCode.LIVE_BUDGET_EXHAUSTED
     if error.code == "provider_timeout":
         return FailureCode.PROVIDER_TIMEOUT
     return FailureCode.PROVIDER_ERROR
@@ -86,15 +84,10 @@ class ComplaintOrchestrator:
         run_mode: RunMode,
         short_input_max: int = 2_000,
         medium_input_max: int = 8_000,
-        live_rate_ceiling: Decimal | None = None,
         clock: Clock = lambda: datetime.now(UTC),
     ) -> None:
         if short_input_max <= 0 or medium_input_max <= short_input_max:
             raise ValueError("input bucket limits must be positive and ordered")
-        if live_rate_ceiling is not None and (
-            not live_rate_ceiling.is_finite() or live_rate_ceiling <= 0
-        ):
-            raise ValueError("live rate ceiling must be a positive finite amount")
         self._repository = repository
         self._provider = provider
         self._policy = policy
@@ -102,7 +95,6 @@ class ComplaintOrchestrator:
         self._run_mode = run_mode
         self._short_input_max = short_input_max
         self._medium_input_max = medium_input_max
-        self._live_rate_ceiling = live_rate_ceiling
         self._clock = clock
         self._classification_agent = ClassificationAgent(
             provider,
@@ -458,20 +450,15 @@ class ComplaintOrchestrator:
             else _token_usage(response)
         )
         try:
-            if self._live_rate_ceiling is None:
-                observation = calculate_usage_cost(usage, model=model)
+            if self._run_mode is RunMode.DEMO:
+                observation = CostObservation(
+                    amount_usd=None,
+                    complete=False,
+                    pricing_version=None,
+                    unknown_reason="live_price_unconfigured",
+                )
             else:
-                conservative_price = PricingRule(
-                    input_usd_per_1k_tokens=self._live_rate_ceiling,
-                    output_usd_per_1k_tokens=self._live_rate_ceiling,
-                    cached_input_usd_per_1k_tokens=self._live_rate_ceiling,
-                )
-                observation = calculate_usage_cost(
-                    usage,
-                    model=model,
-                    pricing={model: conservative_price},
-                    pricing_version="live-approved-rate-ceiling-v1",
-                )
+                observation = calculate_usage_cost(usage, model=model)
         except CostError:
             observation = CostObservation(
                 amount_usd=None,

@@ -1,11 +1,11 @@
-"""Deterministic, explicitly synthetic demo replays through Phase B/C logic."""
+"""Deterministic replays through Phase B/C logic."""
 
 from __future__ import annotations
 
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from complaint_copilot.classification import ClassificationAgent
 from complaint_copilot.contracts import AnalysisRequest, ModelDecision, Stage
@@ -52,7 +52,29 @@ def replay_drift(data_root: Path) -> dict[str, object]:
         "window_counts": [len(window) for window in windows],
         "window_scores_base2_jsd": scores,
         "warning_after_consecutive_windows": report["status"] == "warning",
-        "source": "raw synthetic complaint texts processed by the Phase C extractor",
+        "source": "example complaint texts processed by the Phase C extractor",
+    }
+
+
+class BatchDriftResult(TypedDict):
+    reference_count: int
+    complaint_count: int
+    score_base2_jsd: float
+    threshold: float
+    above_threshold: bool
+
+
+def measure_batch_drift(
+    data_root: Path, complaints: list[dict[str, object]]
+) -> BatchDriftResult:
+    baseline = _read_jsonl(data_root / "drift" / "baseline.jsonl")
+    score = window_drift_score(baseline, complaints)
+    return {
+        "reference_count": len(baseline),
+        "complaint_count": len(complaints),
+        "score_base2_jsd": score,
+        "threshold": 0.10,
+        "above_threshold": score > 0.10,
     }
 
 
@@ -171,10 +193,10 @@ def replay_quality(data_root: Path) -> dict[str, object]:
     return {
         "mode": "fixture",
         "label_disclaimer": (
-            "Synthetic labels are for arithmetic rehearsal, not independently "
+            "Example labels are for arithmetic rehearsal, not independently "
             "adjudicated ground truth or live model results. Q0 uses actual "
             "scripted FixtureProvider outputs; Q1 is a separate controlled "
-            "degradation derived from the synthetic labels, not a model comparison."
+            "degradation derived from the example labels, not a model comparison."
         ),
         "q0": q0,
         "q1": q1,
