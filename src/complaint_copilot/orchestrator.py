@@ -58,6 +58,8 @@ Clock = Callable[[], datetime]
 
 
 def _failure_code(error: ProviderFailure) -> FailureCode:
+    if error.code == "live_budget_exhausted":
+        return FailureCode.LIVE_BUDGET_EXHAUSTED
     if error.code == "provider_timeout":
         return FailureCode.PROVIDER_TIMEOUT
     return FailureCode.PROVIDER_ERROR

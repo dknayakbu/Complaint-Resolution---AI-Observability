@@ -6,7 +6,7 @@ import hashlib
 import os
 import secrets
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -49,9 +49,11 @@ from complaint_copilot.model_policy import StageModelPolicy
 from complaint_copilot.orchestrator import ComplaintOrchestrator
 from complaint_copilot.provider import (
     FixtureProvider,
+    LiveBudgetProvider,
     OpenAIProvider,
     Provider,
     RetryingProvider,
+    live_request_budget_context,
 )
 from complaint_copilot.repository import (
     ConcurrentUpdate,
@@ -130,6 +132,26 @@ def create_app(
     config = settings or AppSettings.from_env()
     repo = repository or SQLiteRepository(config.database_path)
     active_provider = provider or _provider_for(config)
+    if config.mode == "live":
+        if (
+            config.live_approval_id is None
+            or config.live_max_calls is None
+            or config.live_max_tokens is None
+            or config.live_max_cost_usd is None
+            or config.live_max_output_tokens is None
+            or config.live_max_usd_per_1k_tokens is None
+        ):
+            raise ValueError("live model budget settings are unavailable")
+        active_provider = LiveBudgetProvider(
+            active_provider,
+            repo,
+            approval_id=config.live_approval_id,
+            max_calls=config.live_max_calls,
+            max_tokens=config.live_max_tokens,
+            max_cost_usd=config.live_max_cost_usd,
+            max_output_tokens=config.live_max_output_tokens,
+            max_usd_per_1k_tokens=config.live_max_usd_per_1k_tokens,
+        )
     if provider is None:
         active_provider = RetryingProvider(
             active_provider, max_attempts=config.max_provider_attempts
@@ -178,6 +200,11 @@ def create_app(
             "provider": "fixture" if config.mode == "fixture" else "openai",
             "live_approved": str(config.live_model_approved).lower(),
             "live_max_requests": str(config.live_max_requests or ""),
+            "live_max_calls": str(config.live_max_calls or ""),
+            "live_max_tokens": str(config.live_max_tokens or ""),
+            "live_max_cost_usd": str(config.live_max_cost_usd or ""),
+            "live_max_output_tokens": str(config.live_max_output_tokens or ""),
+            "live_max_usd_per_1k_tokens": str(config.live_max_usd_per_1k_tokens or ""),
             "warning": (
                 "Scripted fixture responses; not model behavior."
                 if config.mode == "fixture"
@@ -248,17 +275,17 @@ def create_app(
                         status_code=503,
                         detail="live model approval settings are unavailable",
                     )
-                repo.reserve_live_request(
-                    approval_id=config.live_approval_id,
-                    max_requests=config.live_max_requests,
-                    request_key=idempotency_key,
-                    now=datetime.now(UTC),
+                _reserve_live_request(repo, config, idempotency_key)
+            with (
+                live_request_budget_context(idempotency_key)
+                if config.mode == "live"
+                else nullcontext()
+            ):
+                return workflow.process(
+                    complaint_text=body.complaint_text,
+                    idempotency_key=idempotency_key,
+                    source_sample_id=body.source_sample_id,
                 )
-            return workflow.process(
-                complaint_text=body.complaint_text,
-                idempotency_key=idempotency_key,
-                source_sample_id=body.source_sample_id,
-            )
         except IdempotencyConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         except LiveBudgetExhausted as error:
@@ -394,6 +421,7 @@ def create_app(
 
     @app.post("/api/baseline")
     def baseline(body: IntakeBody) -> dict[str, object]:
+        request_key = f"baseline:{secrets.token_urlsafe(18)}"
         if config.mode == "live":
             if config.live_approval_id is None or config.live_max_requests is None:
                 raise HTTPException(
@@ -401,12 +429,7 @@ def create_app(
                     detail="live model approval settings are unavailable",
                 )
             try:
-                repo.reserve_live_request(
-                    approval_id=config.live_approval_id,
-                    max_requests=config.live_max_requests,
-                    request_key=f"baseline:{secrets.token_urlsafe(18)}",
-                    now=datetime.now(UTC),
-                )
+                _reserve_live_request(repo, config, request_key)
             except LiveBudgetExhausted as error:
                 raise HTTPException(status_code=429, detail=str(error)) from error
             except IdempotencyConflict as error:
@@ -423,7 +446,12 @@ def create_app(
         decision = policy.resolve(Stage.CLASSIFICATION, {})
         model = decision.model
         baseline_provider = active_provider
-        result = SingleCallBaseline(baseline_provider, model).run(request)
+        with (
+            live_request_budget_context(request_key)
+            if config.mode == "live"
+            else nullcontext()
+        ):
+            result = SingleCallBaseline(baseline_provider, model).run(request)
         return {
             "mode": config.mode,
             "baseline_prompt_version": "single-call-baseline-v1",
@@ -715,12 +743,42 @@ def _record_replay_metrics(scenario: str, result: Mapping[str, object]) -> None:
                         )
 
 
+def _reserve_live_request(
+    repository: SQLiteRepository, settings: AppSettings, request_key: str
+) -> None:
+    if (
+        settings.live_approval_id is None
+        or settings.live_max_requests is None
+        or settings.live_max_calls is None
+        or settings.live_max_tokens is None
+        or settings.live_max_cost_usd is None
+    ):
+        raise HTTPException(
+            status_code=503, detail="live model budget settings are unavailable"
+        )
+    repository.reserve_live_request(
+        approval_id=settings.live_approval_id,
+        max_requests=settings.live_max_requests,
+        max_calls=settings.live_max_calls,
+        max_tokens=settings.live_max_tokens,
+        max_cost_usd=settings.live_max_cost_usd,
+        request_key=request_key,
+        now=datetime.now(UTC),
+    )
+
+
 def _provider_for(settings: AppSettings) -> Provider:
     if settings.mode == "fixture":
         return FixtureProvider()
     if not settings.openai_api_key:
         raise ValueError("OPENAI_API_KEY is required for live provider mode")
-    return OpenAIProvider(settings.openai_api_key, settings.request_timeout_seconds)
+    if settings.live_max_output_tokens is None:
+        raise ValueError("LIVE_MODEL_MAX_OUTPUT_TOKENS is required in live mode")
+    return OpenAIProvider(
+        settings.openai_api_key,
+        settings.request_timeout_seconds,
+        max_output_tokens=settings.live_max_output_tokens,
+    )
 
 
 def _authorized_actor(

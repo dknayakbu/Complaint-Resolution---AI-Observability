@@ -87,6 +87,7 @@ class StageStatus(StrEnum):
 class FailureCode(StrEnum):
     CLASSIFICATION_INVALID = "classification_invalid"
     DRAFTING_INVALID = "drafting_invalid"
+    LIVE_BUDGET_EXHAUSTED = "live_budget_exhausted"
     PROVIDER_TIMEOUT = "provider_timeout"
     PROVIDER_ERROR = "provider_error"
 

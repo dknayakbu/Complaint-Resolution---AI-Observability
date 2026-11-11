@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from complaint_copilot.api import create_app
-from complaint_copilot.provider import FixtureProvider
+from complaint_copilot.provider import FixtureProvider, OpenAIProvider
 from complaint_copilot.repository import SQLiteRepository
 from complaint_copilot.settings import AppSettings
 
@@ -50,9 +53,17 @@ def test_live_mode_requires_explicit_bounded_approval() -> None:
         live_model_approved=True,
         live_approval_id="facilitator-approval-1",
         live_max_requests=2,
+        live_max_calls=6,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
     )
     assert approved.live_model_approved is True
     assert approved.live_max_requests == 2
+    assert approved.live_max_calls == 6
+    assert approved.live_max_tokens == 100_000
+    assert approved.live_max_cost_usd == Decimal("100")
 
 
 def test_live_approval_request_limit_persists_and_blocks_before_provider_call(
@@ -70,6 +81,11 @@ def test_live_approval_request_limit_persists_and_blocks_before_provider_call(
         live_model_approved=True,
         live_approval_id="facilitator-approval-1",
         live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
     )
     repository = SQLiteRepository(tmp_path / "live.sqlite3")
     provider = FixtureProvider()
@@ -102,6 +118,229 @@ def test_live_approval_request_limit_persists_and_blocks_before_provider_call(
     assert blocked.status_code == 429
     assert after_restart.status_code == 429
     assert len(provider.calls) == 2
+
+
+def test_live_call_limit_stops_generation_before_provider_call(tmp_path: Path) -> None:
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-call-budget.sqlite3",
+        model="fixture-default",
+        openai_api_key="not-used",
+        reviewer_token="reviewer",
+        internal_token="internal",
+        short_input_max=100,
+        medium_input_max=500,
+        live_model_approved=True,
+        live_approval_id="call-budget-approval",
+        live_max_requests=1,
+        live_max_calls=1,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    provider = FixtureProvider()
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "bounded-live-workflow"},
+            json={"complaint_text": "Synthetic account access complaint."},
+        )
+
+    assert response.status_code == 201
+    case = response.json()
+    assert case["state"] == "manual_required"
+    assert case["analyses"][0]["result"]["draft"] is None
+    assert case["analyses"][0]["result"]["drafting_stage"]["failure_code"] == (
+        "live_budget_exhausted"
+    )
+    assert len(provider.calls) == 1
+
+
+def test_live_call_budget_persists_across_restart(tmp_path: Path) -> None:
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-call-budget-restart.sqlite3",
+        model="fixture-default",
+        openai_api_key="not-used",
+        reviewer_token="reviewer",
+        internal_token="internal",
+        short_input_max=100,
+        medium_input_max=500,
+        live_model_approved=True,
+        live_approval_id="persistent-call-budget",
+        live_max_requests=2,
+        live_max_calls=1,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    repository = SQLiteRepository(settings.database_path)
+    provider = FixtureProvider()
+    with TestClient(
+        create_app(settings, repository=repository, provider=provider)
+    ) as client:
+        first = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "first-live-run"},
+            json={"complaint_text": "Synthetic account access complaint."},
+        )
+    assert first.status_code == 201
+    assert len(provider.calls) == 1
+
+    restarted = create_app(
+        settings,
+        repository=SQLiteRepository(settings.database_path),
+        provider=provider,
+    )
+    with TestClient(restarted) as client:
+        second = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "second-live-run"},
+            json={"complaint_text": "Another synthetic account complaint."},
+        )
+
+    assert second.status_code == 201
+    assert second.json()["state"] == "manual_required"
+    assert "live_budget_exhausted" in str(second.json())
+    assert len(provider.calls) == 1
+
+
+def test_live_baseline_uses_the_same_call_and_cost_budget(tmp_path: Path) -> None:
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-baseline-budget.sqlite3",
+        model="fixture-default",
+        openai_api_key="not-used",
+        reviewer_token="reviewer",
+        internal_token="internal",
+        short_input_max=100,
+        medium_input_max=500,
+        live_model_approved=True,
+        live_approval_id="baseline-budget-approval",
+        live_max_requests=1,
+        live_max_calls=1,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    provider = FixtureProvider()
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/baseline",
+            json={"complaint_text": "Synthetic account access complaint."},
+        )
+
+    assert response.status_code == 200
+    assert len(provider.calls) == 1
+
+
+def test_live_token_limit_blocks_provider_before_call(tmp_path: Path) -> None:
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-token-budget.sqlite3",
+        model="fixture-default",
+        openai_api_key="not-used",
+        reviewer_token="reviewer",
+        internal_token="internal",
+        short_input_max=100,
+        medium_input_max=500,
+        live_model_approved=True,
+        live_approval_id="token-budget-approval",
+        live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=1,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    provider = FixtureProvider()
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "under-token-budget"},
+            json={"complaint_text": "Synthetic account access complaint."},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["state"] == "manual_required"
+    assert "live_budget_exhausted" in str(response.json())
+    assert provider.calls == []
+
+
+def test_openai_provider_applies_approved_output_token_limit() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))],
+        model="gpt-4o-mini",
+        usage=None,
+    )
+    provider = OpenAIProvider("not-used", 5, client=client, max_output_tokens=37)
+
+    provider.generate(None, "gpt-4o-mini", "system", "user")
+
+    assert (
+        client.chat.completions.create.call_args.kwargs["max_completion_tokens"] == 37
+    )
+
+
+def test_live_cost_limit_blocks_provider_before_call(tmp_path: Path) -> None:
+    settings = AppSettings(
+        mode="live",
+        database_path=tmp_path / "live-cost-budget.sqlite3",
+        model="fixture-default",
+        openai_api_key="not-used",
+        reviewer_token="reviewer",
+        internal_token="internal",
+        short_input_max=100,
+        medium_input_max=500,
+        live_model_approved=True,
+        live_approval_id="cost-budget-approval",
+        live_max_requests=1,
+        live_max_calls=2,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("0.000001"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
+    )
+    provider = FixtureProvider()
+    with TestClient(
+        create_app(
+            settings,
+            repository=SQLiteRepository(settings.database_path),
+            provider=provider,
+        )
+    ) as client:
+        response = client.post(
+            "/api/cases",
+            headers={"Idempotency-Key": "under-cost-budget"},
+            json={"complaint_text": "Synthetic account access complaint."},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["state"] == "manual_required"
+    assert "live_budget_exhausted" in str(response.json())
+    assert provider.calls == []
 
 
 def test_model_policy_exposes_explicit_stage_assignments(tmp_path: Path) -> None:
@@ -200,6 +439,11 @@ def test_operations_slo_keeps_fixture_and_live_mode_windows_separate(
         live_model_approved=True,
         live_approval_id="slo-window-test",
         live_max_requests=1,
+        live_max_calls=1,
+        live_max_tokens=100_000,
+        live_max_cost_usd=Decimal("100"),
+        live_max_output_tokens=128,
+        live_max_usd_per_1k_tokens=Decimal("1"),
     )
     with TestClient(
         create_app(

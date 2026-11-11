@@ -125,11 +125,20 @@ calls or notifications. Ruff exempts only the long synthetic text literals in
   provider incident. This is not an external paging channel or blind incident
   rehearsal.
 - Live mode is rejected unless `LIVE_MODEL_APPROVED=true`, a non-empty
-  `LIVE_MODEL_APPROVAL_ID`, and `LIVE_MODEL_MAX_REQUESTS` from 1 to 10 are
-  explicitly configured alongside live credentials and reviewer/input
-  settings. The request allowance is persisted and shared by baseline and
-  workflow calls for that approval ID. It limits request count, not dollar
-  spend. This task did not authorize or make a paid model call; obtain separate
-  approval and define a spend limit before enabling live mode.
+  `LIVE_MODEL_APPROVAL_ID`, and explicit `LIVE_MODEL_MAX_REQUESTS` (1-10),
+  `LIVE_MODEL_MAX_CALLS` (1-60), `LIVE_MODEL_MAX_TOKENS`, and
+  `LIVE_MODEL_MAX_COST_USD` limits are configured alongside live credentials
+  and reviewer/input settings. `LIVE_MODEL_MAX_OUTPUT_TOKENS` (1-4096) caps
+  every generation. `LIVE_MODEL_MAX_USD_PER_1K_TOKENS` is the approved
+  conservative rate ceiling and must be at least the highest current input or
+  output rate for any configured stage model. Before each provider attempt, the
+  app reserves a conservative token amount (UTF-8 prompt bytes plus the output
+  cap) and its cost at that rate; failed attempts are not refunded. Request,
+  call, token, and cost reservations persist by approval ID and cannot be
+  increased or changed under that ID. Choose fresh limits and a fresh approval
+  ID for a separately approved run. The counters are hard local controls, not
+  provider invoices or a substitute for provider-side spend limits. This task
+  did not authorize or make a paid model call; approval-dependent live evidence
+  remains pending.
 - Real customer data, real queues, regulatory-approved wording, and external
   notifications remain out of scope.
