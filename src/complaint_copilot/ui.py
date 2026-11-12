@@ -297,9 +297,9 @@ def _feedback_and_adjudication(case: dict[str, Any], latest: dict[str, Any]) -> 
 
 def _replays() -> None:
     st.caption("Replays use scripted fixtures and existing Phase B/C logic.")
-    columns = st.columns(4)
+    columns = st.columns(5)
     for column, scenario in zip(
-        columns, ("drift", "cost", "quality", "slo"), strict=True
+        columns, ("drift", "embedding", "cost", "quality", "slo"), strict=True
     ):
         with column:
             if st.button(f"Run {scenario} replay"):

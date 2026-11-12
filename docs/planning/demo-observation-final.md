@@ -97,9 +97,16 @@ Each line appears after that category or severity is first observed.
 **Business question:** How would the team notice changing complaint patterns,
 possible missed high-severity cases, and operational failures?
 
-1. In **Replays**, run **drift**, **cost**, **quality**, and **slo**
-   one at a time. Show their returned JSON:
+1. In **Replays**, run **drift**, **embedding**, **cost**, **quality**, and **slo**
+   one at a time using the corresponding **Run ... replay** buttons. These
+   are separate from `make_complaints.py`; the burst does not run them.
+   Show their returned JSON:
    - **Drift:** two window scores and the consecutive-window warning.
+   - **Embedding:** cosine distances for both input windows against the
+     reference centroid. The local model runs on the API host; the first run
+     downloads approximately 90 MB of model files. It does not send complaint
+       text to an embedding service. Inputs are truncated to the model's first
+       256 tokens; a model or reference-set change requires a fresh comparison.
    - **Cost:** scripted threshold crossing and total, not a provider invoice.
    - **Quality:** Q0 scripted-fixture and Q1 controlled label-derived raw and
      effective SEV1 recall. The labels and outcomes are examples.
@@ -108,7 +115,8 @@ possible missed high-severity cases, and operational failures?
      reports the latest real workflow window and may say `insufficient_sample`.
 2. In **Alert inbox**, select **Send a test firing alert** and show the
    local inbox entry. This is a manually injected test event, not an actual
-   outage, automatic Grafana alert, or external page.
+   outage, automatic Grafana alert, or external page. A resolved line is
+   absent until a resolved event is received.
 3. Return to the dashboards:
 
    - **Safety and Quality:** **SEV1 recall - quality replay**
@@ -116,7 +124,12 @@ possible missed high-severity cases, and operational failures?
      before and after safeguards. The panel averages repeated
      replays; it is not measured live model accuracy.
    - **Drift and Incident:** **Input shift - replay windows** compares the
-     two window scores; orange marks the 0.10 replay threshold. **Replay
+     example **Account access and login problems** (window 1) and **Scams,
+     fraud and duplicate payments** (window 2) scores with the 0.10 replay
+     threshold. **Complaint embedding
+     shift** charts the two local embedding-centroid distances; higher values
+     indicate greater difference from the reference set. The latest burst
+     is a separate line. No embedding alert threshold is calibrated. **Replay
      warnings** shows drift and cost warning events; the cost ratio
      details remain in the replay output. **Good outcomes - SLO
      replay** compares **Before failure**, **After one failure** and **After
@@ -125,7 +138,11 @@ possible missed high-severity cases, and operational failures?
      than current active incidents. Check Grafana **Alerting** and the
      application's **Alert inbox** separately for delivered events.
    - **Complaint Operations:** return to **Analysis results** for the actual
-     workflow, and the UI sidebar/API for the latest-30 live sample status.
+     workflow, **Complaint arrival rate** and **Manual handling rate** for
+     recent traffic and processing failures, and **Stage duration - median and
+     95th percentile** for typical versus slower individual stages. These
+     estimates combine classification and drafting and may be unreliable with
+     few samples. Use the UI sidebar/API for the latest-30 live sample status.
      Alert evaluation and delivery can take time and should not be assumed.
 4. In Prometheus, query `complaint_drift_warnings_total`,
    `complaint_cost_anomaly_events_total`, and `llm_tokens_total` to show the
@@ -167,6 +184,27 @@ stack. Fixture mode uses the default fixture token if none is set.
 Live mode makes up to 20 provider calls and incurs charges; fixture mode
 uses scripted responses. The cases remain in the reviewer queue.
 
+**Which Drift and Incident graphs should fill?**
+
+| Graph | Action needed |
+| --- | --- |
+| Complaint burst input shift | Run the burst successfully; check for `Batch shift` in the terminal. |
+| Complaint embedding shift | Run the burst successfully; check for `Embedding centroid distance`. For the two replay-window lines, also run **Replays → Run embedding replay**. |
+| Input shift - replay windows | Run **Replays → Run drift replay**. |
+| Replay warnings | Run **drift** and **cost** replays; these are example warnings, not incidents caused by the burst. |
+| Good outcomes - SLO replay | Run **Replays → Run slo replay**. |
+| Local alert inbox events | In **Alert inbox**, select **Send a test firing alert**. |
+| Telemetry scrape health | The Prometheus targets must be up; no replay is needed. |
+| Stage costs unknown | Run a live complaint analysis with no complete configured cost estimate. This may incur provider charges. |
+
+After each action, allow time for metric export and scraping, set the Grafana
+time picker to **Last 15 minutes** (or a range containing the action), and
+refresh. Select the full **Drift and Incident** dashboard and scroll down:
+the burst graphs are at the bottom. A blank replay or alert graph before its
+action is normal; a burst alone does not create an alert. If the burst prints
+an error instead of both measurements, use the error to diagnose the failed
+step; a completed case submission alone does not mean drift was measured.
+
 1. In **Complaint Operations**, watch **Received and analysed over time**.
    Received can rise before analysed because model work takes time; the
    individual stage and outcome counters rise as each analysis finishes.
@@ -183,10 +221,33 @@ uses scripted responses. The cases remain in the reviewer queue.
    for these examples, not
    an established trend. The separate replay warning requires two consecutive
    shifted windows; the burst does not manufacture an incident or alert.
+   The runner also measures **Complaint embedding shift** for those same
+   complaints. This uses all-MiniLM-L6-v2 sentence embeddings and cosine
+   distance between mean vectors, not the existing word-distribution score.
+   It shows the latest measurement per API instance and is not a measured
+   model-quality score. The collector may temporarily retain the previous
+   instance's line after an API restart; check the instance IDs in the legend.
 3. Open an individual case in the UI and follow its trace in Jaeger. Refresh
    Grafana after telemetry export and the next scrape. Use Prometheus query
    `complaint_drift_js_divergence_count{replay="batch"}` to verify a burst
-   measurement was recorded.
+   measurement was recorded. Query `complaint_embedding_drift_ratio` for embedding
+   scores. If these are present but Grafana is blank, check the selected time
+   range and the dashboard's Prometheus data source. If they are absent, check
+   the terminal output and [Prometheus targets](http://localhost:9090/targets).
+   If model download or inference fails, the runner reports the error
+   after the cases and original drift measurement have already been recorded;
+   do not resubmit cases merely to retry the embedding calculation. After
+   correcting the error, use the ten case IDs printed by the runner:
+
+   ```powershell
+   $ids = @("case-id-1", "case-id-2", "case-id-3", "case-id-4", "case-id-5",
+            "case-id-6", "case-id-7", "case-id-8", "case-id-9", "case-id-10")
+   $headers = @{ "X-Internal-Token" = $env:INTERNAL_TOKEN
+                 "Idempotency-Key" = [guid]::NewGuid().ToString() }
+   $body = @{ case_ids = $ids } | ConvertTo-Json
+   Invoke-RestMethod -Method Post -Uri http://localhost:8000/internal/demo/batch-embedding-drift `
+     -Headers $headers -ContentType "application/json" -Body $body
+   ```
 
 **Observed on this stack:** a ten-case live burst completed with all cases
 awaiting review, a batch shift of 0.632, and a sampled gap of six between

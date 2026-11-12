@@ -100,6 +100,73 @@
         {"id": "renameByRegex", "options": {"regex": "^fixture / Analysed$", "renamePattern": "Scripted test / Analysed"}}
       ],
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Count of successfully classified complaints by the agent's predicted category, including cases where drafting later failed. Lines rise as classifications are saved. The legend shows the latest counter value; counters start when this instrumentation is deployed and can reset on restart. Categories appear after they are observed. Reviewer corrections are not included.",
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "decimals": 0}, "overrides": []},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 28},
+      "id": 6,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum by (category) (complaint_classifications_total{run_mode=\"demo\"})", "legendFormat": "{{category}} / Live model", "refId": "A"},
+        {"expr": "sum by (category) (complaint_classifications_total{run_mode=\"fixture\"})", "legendFormat": "{{category}} / Scripted test", "refId": "B"}
+      ],
+      "title": "Complaint categories - count and trend",
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^cards_payments / (.*)$", "renamePattern": "Cards and payments / $1"}},
+        {"id": "renameByRegex", "options": {"regex": "^accounts / (.*)$", "renamePattern": "Accounts / $1"}},
+        {"id": "renameByRegex", "options": {"regex": "^fraud_scams / (.*)$", "renamePattern": "Fraud and scams / $1"}},
+        {"id": "renameByRegex", "options": {"regex": "^lending / (.*)$", "renamePattern": "Lending / $1"}},
+        {"id": "renameByRegex", "options": {"regex": "^service_access / (.*)$", "renamePattern": "Service and access / $1"}},
+        {"id": "renameByRegex", "options": {"regex": "^discrimination / (.*)$", "renamePattern": "Discrimination / $1"}},
+        {"id": "renameByRegex", "options": {"regex": "^other / (.*)$", "renamePattern": "Other / $1"}}
+      ],
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Recent arrival rate over five minutes, by workflow mode. A spike shows a burst of complaints. No data can mean too few scrape samples.",
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37},
+      "id": 7,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum(rate(complaint_requests_total{run_mode=\"demo\"}[5m]))", "legendFormat": "Live model", "refId": "A"},
+        {"expr": "sum(rate(complaint_requests_total{run_mode=\"fixture\"}[5m]))", "legendFormat": "Scripted test", "refId": "B"}
+      ],
+      "title": "Complaint arrival rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Recent rate of analyses requiring manual handling, including provider or validation failures. It does not measure incorrect classifications or customer harm.",
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37},
+      "id": 8,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum(rate(complaint_analysis_total{outcome=\"manual_required\",run_mode=\"demo\"}[5m]))", "legendFormat": "Live model", "refId": "A"},
+        {"expr": "sum(rate(complaint_analysis_total{outcome=\"manual_required\",run_mode=\"fixture\"}[5m]))", "legendFormat": "Scripted test", "refId": "B"}
+      ],
+      "title": "Manual handling rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Approximate median and 95th percentile of classification and drafting stage durations combined, over five minutes, estimated from histogram buckets. The upper percentile shows slower stages, not end-to-end complaint duration. Sparse samples can be misleading; no data means insufficient observations.",
+      "fieldConfig": {"defaults": {"unit": "s", "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 45},
+      "id": 9,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "histogram_quantile(0.5, sum by (le) (rate(llm_call_duration_seconds_bucket{run_mode=\"demo\"}[5m])))", "legendFormat": "Live model / Median", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(llm_call_duration_seconds_bucket{run_mode=\"demo\"}[5m])))", "legendFormat": "Live model / 95th percentile", "refId": "B"},
+        {"expr": "histogram_quantile(0.5, sum by (le) (rate(llm_call_duration_seconds_bucket{run_mode=\"fixture\"}[5m])))", "legendFormat": "Scripted test / Median", "refId": "C"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(llm_call_duration_seconds_bucket{run_mode=\"fixture\"}[5m])))", "legendFormat": "Scripted test / 95th percentile", "refId": "D"}
+      ],
+      "title": "Stage duration - median and 95th percentile",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",

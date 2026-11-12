@@ -18,6 +18,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: complaint-copilot-api
       OTEL_METRIC_EXPORT_INTERVAL_MS: ${OTEL_METRIC_EXPORT_INTERVAL_MS:-1000}
+      FASTEMBED_CACHE_PATH: /app/var/embedding-model
+      HF_HUB_DISABLE_TELEMETRY: "1"
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -28,7 +30,7 @@ services:
         - python
         - -c
         - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
-      interval: 5s
+      interval: 1m
       timeout: 3s
       retries: 20
       start_period: 10s

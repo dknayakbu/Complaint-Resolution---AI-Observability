@@ -39,11 +39,14 @@ from complaint_copilot.contracts import (
 )
 from complaint_copilot.demo_replay import (
     measure_batch_drift,
+    measure_embedding_drift,
     replay_cost,
     replay_drift,
+    replay_embedding_drift,
     replay_quality,
     replay_slo,
 )
+from complaint_copilot.embedding_drift import EmbeddingUnavailableError
 from complaint_copilot.feedback import merge
 from complaint_copilot.instrumentation import flush_telemetry, instruments, tracer
 from complaint_copilot.model_policy import StageModelPolicy
@@ -559,6 +562,44 @@ def create_app(
             flush_telemetry()
         return {**stored_result, "duplicate": not created}
 
+    @app.post("/internal/demo/batch-embedding-drift")
+    def batch_embedding_drift(
+        body: BatchDriftBody,
+        idempotency_key: Annotated[
+            str, Header(alias="Idempotency-Key", min_length=1, max_length=200)
+        ],
+        internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
+    ) -> dict[str, object]:
+        _require_internal(internal_token, config.internal_token)
+        try:
+            complaints = [
+                {"complaint_text": repo.get_case(case_id)["complaint_text"]}
+                for case_id in body.case_ids
+            ]
+            result = measure_embedding_drift(app.state.data_root, [complaints])
+            digest = hashlib.sha256(
+                "\n".join(sorted(body.case_ids)).encode("utf-8")
+            ).hexdigest()
+            stored_result, created = repo.store_demo_replay(
+                idempotency_key=idempotency_key,
+                scenario=f"batch-embedding-drift:{digest}",
+                result=result,
+                now=datetime.now(UTC),
+            )
+        except RecordNotFound as error:
+            raise HTTPException(status_code=404, detail="case not found") from error
+        except IdempotencyConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except EmbeddingUnavailableError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        if created:
+            run_mode = RunMode.DEMO if config.mode == "live" else RunMode.FIXTURE
+            _record_replay_metrics("embedding_batch", result, run_mode=run_mode)
+            flush_telemetry()
+        return {**stored_result, "duplicate": not created}
+
     @app.post("/internal/demo/replay/{scenario}")
     def replay(
         scenario: str,
@@ -571,6 +612,8 @@ def create_app(
         try:
             if scenario == "drift":
                 output = replay_drift(app.state.data_root)
+            elif scenario == "embedding":
+                output = replay_embedding_drift(app.state.data_root)
             elif scenario == "cost":
                 output = replay_cost()
             elif scenario == "quality":
@@ -587,6 +630,8 @@ def create_app(
             )
         except IdempotencyConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+        except EmbeddingUnavailableError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
         except (OSError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         if created:
@@ -708,6 +753,14 @@ def _record_replay_metrics(
                     )
         if result.get("warning_after_consecutive_windows") is True:
             instruments.drift_warnings.add(1, labels)
+    elif scenario in {"embedding", "embedding_batch"}:
+        scores = result.get("cosine_distances")
+        if isinstance(scores, list):
+            for index, value in enumerate(scores, start=1):
+                if isinstance(value, (int, float)):
+                    instruments.embedding_drift.set(
+                        float(value), {**labels, "window": str(index)}
+                    )
     elif scenario == "cost":
         ratios = result.get("ratios_initial_then_each_observation")
         if isinstance(ratios, list):

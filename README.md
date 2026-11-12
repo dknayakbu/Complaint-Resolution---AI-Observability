@@ -167,6 +167,11 @@ To send a burst of ten invented complaints and compare their input distribution
 in Grafana, run `python make_complaints.py`. The
 [burst observation](docs/planning/demo-observation-final.md#observation-3-a-complaint-burst-and-its-input-shift)
 explains concurrency, token setup, charges and what the charts mean.
+The embedding replay and burst use the local all-MiniLM-L6-v2 model. The first
+use downloads about 90 MB of model files into the API's persistent volume;
+complaint text is embedded locally, not sent to an embedding service.
+Embedding centroid distance is an input-shift indicator, not an accuracy
+measure or a calibrated alert.
 Do not run
 `scripts\demo_rehearsal.py` in live mode; it is a fixture-only acceptance
 rehearsal. To return to the safe fixture mode, set

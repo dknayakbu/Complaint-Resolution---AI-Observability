@@ -220,6 +220,14 @@ class ComplaintOrchestrator:
                 policy_flags=policy_flags,
                 now=self._clock(),
             )
+            instruments.classifications.add(
+                1,
+                {
+                    "run_mode": self._run_mode.value,
+                    "category": classification.category.value,
+                    "severity": f"SEV{int(effective_severity)}",
+                },
+            )
         except ProviderFailure as error:
             classification_failure = _failure_code(error)
             classification_attempts = error.attempts

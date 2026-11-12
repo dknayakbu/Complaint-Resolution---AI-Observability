@@ -4,8 +4,9 @@ import json
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from complaint_copilot.api import create_app
@@ -221,6 +222,69 @@ def test_safeguard_promotes_severity_but_preserves_model_prediction(
     result = response.json()["analyses"][0]["result"]
     assert result["classification"]["model_severity"] == 3
     assert result["effective_severity"] == 1
+
+
+@pytest.mark.parametrize(
+    ("complaint", "category", "model_severity", "expected_severity", "draft_fails"),
+    [
+        (
+            "Your system debited the same card purchase twice for GBP 85. "
+            "The duplicate debit has left me short of the money needed for my rent.",
+            "other",
+            3,
+            "SEV1",
+            False,
+        ),
+        ("My account access is delayed.", "service_access", 2, "SEV2", False),
+        ("My card arrived late.", "cards_payments", 3, "SEV3", True),
+    ],
+)
+def test_classification_metrics_track_saved_results_once(
+    tmp_path: Path,
+    complaint: str,
+    category: str,
+    model_severity: int,
+    expected_severity: str,
+    draft_fails: bool,
+) -> None:
+    drafting = (
+        ProviderFailure("provider_timeout", retryable=False) if draft_fails else None
+    )
+    provider = _provider(
+        complaint, category=category, severity=model_severity, drafting=drafting
+    )
+    with patch("complaint_copilot.orchestrator.instruments") as instruments:
+        with _client(tmp_path, provider) as client:
+            for _ in range(2):
+                response = client.post(
+                    "/api/cases",
+                    headers={"Idempotency-Key": "classification-metric"},
+                    json={"complaint_text": complaint},
+                )
+                assert response.status_code == 201
+        instruments.classifications.add.assert_called_once_with(
+            1,
+            {
+                "run_mode": "fixture",
+                "category": category,
+                "severity": expected_severity,
+            },
+        )
+
+
+def test_failed_classification_emits_no_classification_metric(tmp_path: Path) -> None:
+    provider = FixtureProvider(
+        {Stage.CLASSIFICATION: [ProviderResponse('{"category":"unknown"}', "fixture")]}
+    )
+    with patch("complaint_copilot.orchestrator.instruments") as instruments:
+        with _client(tmp_path, provider) as client:
+            response = client.post(
+                "/api/cases",
+                headers={"Idempotency-Key": "invalid-classification-metric"},
+                json={"complaint_text": "My card arrived late."},
+            )
+        assert response.json()["state"] == "manual_required"
+        instruments.classifications.add.assert_not_called()
 
 
 def test_controlled_raw_miss_fixture_records_model_and_effective_severity(

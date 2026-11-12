@@ -9,7 +9,7 @@
       "title": "What changed, and can we observe it?",
       "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
       "id": 10,
-      "options": {"mode": "markdown", "content": "Run the **drift**, **cost** and **slo** replays in the app, or run the complaint burst to compare its input with the reference set. Open **Alert inbox** for events and Grafana **Alerting** for rule status. Replays and manually injected alerts are not real outages. [Complaint Operations](/d/complaint-operations) | [Safety and Quality](/d/safety-quality)"}
+      "options": {"mode": "markdown", "content": "Run **drift**, **embedding**, **cost** and **slo** replays in the app, or run the complaint burst to compare its input with the reference set. The embedding graph uses a local model. Replays and manually injected alerts are not real outages. [Complaint Operations](/d/complaint-operations) | [Safety and Quality](/d/safety-quality)"}
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -17,10 +17,14 @@
       "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.1}]}}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
       "id": 1,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
       "targets": [{"expr": "sum by (window) (complaint_drift_js_divergence_sum{replay=\"drift\",window=~\"1|2\"}) / sum by (window) (complaint_drift_js_divergence_count{replay=\"drift\",window=~\"1|2\"})", "legendFormat": "Window {{window}}", "refId": "A"}],
       "title": "Input shift - replay windows",
-      "type": "stat"
+      "transformations": [
+        {"id": "renameByRegex", "options": {"regex": "^Window 1$", "renamePattern": "Account access and login problems"}},
+        {"id": "renameByRegex", "options": {"regex": "^Window 2$", "renamePattern": "Scams, fraud and duplicate payments"}}
+      ],
+      "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -42,7 +46,7 @@
       "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
       "id": 3,
-      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
       "targets": [{"expr": "sum by (phase) (complaint_slo_outcomes_total{replay=\"slo\",outcome=\"good\"}) / sum by (phase) (complaint_slo_outcomes_total{replay=\"slo\"})", "legendFormat": "{{phase}}", "refId": "A"}],
       "title": "Good outcomes - SLO replay",
       "transformations": [
@@ -50,7 +54,7 @@
         {"id": "renameByRegex", "options": {"regex": "^one_terminal_failure$", "renamePattern": "After one failure"}},
         {"id": "renameByRegex", "options": {"regex": "^after_30_fresh_successes$", "renamePattern": "After recovery"}}
       ],
-      "type": "stat"
+      "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -73,14 +77,14 @@
       "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1}, "overrides": []},
       "gridPos": {"h": 7, "w": 12, "x": 0, "y": 20},
       "id": 5,
-      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
       "targets": [{"expr": "up", "legendFormat": "{{job}}", "refId": "A"}],
       "title": "Telemetry scrape health",
       "transformations": [
         {"id": "renameByRegex", "options": {"regex": "^otel-collector$", "renamePattern": "Telemetry collector"}},
         {"id": "renameByRegex", "options": {"regex": "^otel-exporter$", "renamePattern": "Application metrics exporter"}}
       ],
-      "type": "stat"
+      "type": "timeseries"
     },
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -103,10 +107,28 @@
       "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 0.1}]}}, "overrides": []},
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 27},
       "id": 7,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
       "targets": [{"expr": "sum(complaint_drift_js_divergence_sum{replay=\"batch\"}) / sum(complaint_drift_js_divergence_count{replay=\"batch\"})", "legendFormat": "Complaint burst", "refId": "A"}],
       "title": "Complaint burst input shift",
-      "type": "stat"
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Cosine distance between the local sentence-embedding centroid of each complaint window and 30 reference complaints. Each line shows the latest measurement for an API instance, not an average of historical measurements. Instance IDs distinguish temporarily overlapping series after restarts. Larger means greater shift. This is input drift, not acknowledgement quality or an alert; no threshold is calibrated.",
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 2}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 35},
+      "id": 8,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "complaint_embedding_drift_ratio{replay=\"embedding\",window=\"1\",run_mode=\"demo\"}", "legendFormat": "Window 1 / Live mode / {{exported_instance}}", "refId": "A"},
+        {"expr": "complaint_embedding_drift_ratio{replay=\"embedding\",window=\"2\",run_mode=\"demo\"}", "legendFormat": "Window 2 / Live mode / {{exported_instance}}", "refId": "B"},
+        {"expr": "complaint_embedding_drift_ratio{replay=\"embedding_batch\",run_mode=\"demo\"}", "legendFormat": "Complaint burst / Live mode / {{exported_instance}}", "refId": "C"},
+        {"expr": "complaint_embedding_drift_ratio{replay=\"embedding\",window=\"1\",run_mode=\"fixture\"}", "legendFormat": "Window 1 / Scripted mode / {{exported_instance}}", "refId": "D"},
+        {"expr": "complaint_embedding_drift_ratio{replay=\"embedding\",window=\"2\",run_mode=\"fixture\"}", "legendFormat": "Window 2 / Scripted mode / {{exported_instance}}", "refId": "E"},
+        {"expr": "complaint_embedding_drift_ratio{replay=\"embedding_batch\",run_mode=\"fixture\"}", "legendFormat": "Complaint burst / Scripted mode / {{exported_instance}}", "refId": "F"}
+      ],
+      "title": "Complaint embedding shift",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",

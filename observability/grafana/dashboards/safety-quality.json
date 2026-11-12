@@ -47,7 +47,7 @@
       "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
       "id": 3,
-      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
       "targets": [{"expr": "sum by (pack, metric_type) (evaluation_sev1_recall_sum{replay=\"quality\"}) / sum by (pack, metric_type) (evaluation_sev1_recall_count{replay=\"quality\"})", "legendFormat": "{{pack}} / {{metric_type}}", "refId": "A"}],
       "title": "SEV1 recall - quality replay",
       "transformations": [
@@ -56,7 +56,21 @@
         {"id": "renameByRegex", "options": {"regex": "^Q1 / raw$", "renamePattern": "Controlled scenario / Before safeguards"}},
         {"id": "renameByRegex", "options": {"regex": "^Q1 / effective$", "renamePattern": "Controlled scenario / After safeguards"}}
       ],
-      "type": "stat"
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Count of successfully classified complaints by effective severity after safeguards, including cases where drafting later failed. SEV1 is the most urgent. Lines rise as classifications are saved; the legend shows the latest counter value. Counters start when this instrumentation is deployed and can reset on restart. A severity appears after it is observed; this is not measured model accuracy.",
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "decimals": 0}, "overrides": []},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 20},
+      "id": 4,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum by (severity) (complaint_classifications_total{run_mode=\"demo\"})", "legendFormat": "{{severity}} / Live model", "refId": "A"},
+        {"expr": "sum by (severity) (complaint_classifications_total{run_mode=\"fixture\"})", "legendFormat": "{{severity}} / Scripted test", "refId": "B"}
+      ],
+      "title": "Complaint severity - count and trend",
+      "type": "timeseries"
     }
   ],
   "refresh": "15s",

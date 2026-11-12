@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -15,10 +17,15 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
+class EmbeddingGauge(Protocol):
+    def set(self, amount: float, attributes: Mapping[str, str]) -> None: ...
+
+
 @dataclass(frozen=True)
 class DemoInstruments:
     requests: metrics.Counter
     analyses: metrics.Counter
+    classifications: metrics.Counter
     stage_calls: metrics.Counter
     stage_duration: metrics.Histogram
     tokens: metrics.Counter
@@ -28,6 +35,7 @@ class DemoInstruments:
     review_backlog: metrics.UpDownCounter
     reviews: metrics.Counter
     drift_scores: metrics.Histogram
+    embedding_drift: EmbeddingGauge
     drift_warnings: metrics.Counter
     cost_ratios: metrics.Histogram
     cost_anomalies: metrics.Counter
@@ -73,8 +81,26 @@ def _create_instruments() -> tuple[trace.Tracer, DemoInstruments]:
     return trace.get_tracer("complaint_copilot.workflow", "0.1.0"), DemoInstruments(
         requests=meter.create_counter("complaint_requests"),
         analyses=meter.create_counter("complaint_analysis"),
+        classifications=meter.create_counter("complaint_classifications"),
         stage_calls=meter.create_counter("llm_calls"),
-        stage_duration=meter.create_histogram("llm_call_duration_seconds", unit="s"),
+        stage_duration=meter.create_histogram(
+            "llm_call_duration_seconds",
+            unit="s",
+            explicit_bucket_boundaries_advisory=[
+                0.1,
+                0.25,
+                0.5,
+                1,
+                2,
+                3,
+                5,
+                10,
+                20,
+                40,
+                80,
+                160,
+            ],
+        ),
         tokens=meter.create_counter("llm_tokens"),
         estimated_cost=meter.create_counter("llm_estimated_cost_usd", unit="USD"),
         cost_unknown=meter.create_counter("llm_cost_unknown"),
@@ -82,6 +108,7 @@ def _create_instruments() -> tuple[trace.Tracer, DemoInstruments]:
         review_backlog=meter.create_up_down_counter("complaint_review_backlog"),
         reviews=meter.create_counter("complaint_reviews"),
         drift_scores=meter.create_histogram("complaint_drift_js_divergence", unit="1"),
+        embedding_drift=meter.create_gauge("complaint_embedding_drift", unit="1"),
         drift_warnings=meter.create_counter("complaint_drift_warnings"),
         cost_ratios=meter.create_histogram("complaint_cost_anomaly_ratio", unit="1"),
         cost_anomalies=meter.create_counter("complaint_cost_anomaly_events"),

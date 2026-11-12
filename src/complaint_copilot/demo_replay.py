@@ -11,6 +11,7 @@ from complaint_copilot.classification import ClassificationAgent
 from complaint_copilot.contracts import AnalysisRequest, ModelDecision, Stage
 from complaint_copilot.cost import detect_cost_anomaly
 from complaint_copilot.drift import evaluate_drift_windows, window_drift_score
+from complaint_copilot.embedding_drift import MODEL_NAME, embedding_distances
 from complaint_copilot.eval import build_quality_report, load_labeled_cases
 from complaint_copilot.policy import (
     apply_safeguards,
@@ -54,6 +55,39 @@ def replay_drift(data_root: Path) -> dict[str, object]:
         "warning_after_consecutive_windows": report["status"] == "warning",
         "source": "example complaint texts processed by the Phase C extractor",
     }
+
+
+def measure_embedding_drift(
+    data_root: Path, windows: list[list[dict[str, object]]]
+) -> dict[str, object]:
+    baseline = _read_jsonl(data_root / "drift" / "baseline.jsonl")
+    rows = [baseline, *windows]
+    texts: list[list[str]] = []
+    for group in rows:
+        group_texts = []
+        for row in group:
+            text = row.get("complaint_text")
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("each complaint must contain non-empty text")
+            group_texts.append(text)
+        texts.append(group_texts)
+    return {
+        "model": MODEL_NAME,
+        "reference_count": len(baseline),
+        "window_counts": [len(window) for window in windows],
+        "cosine_distances": embedding_distances(texts[0], texts[1:]),
+    }
+
+
+def replay_embedding_drift(data_root: Path) -> dict[str, object]:
+    directory = data_root / "drift"
+    return measure_embedding_drift(
+        data_root,
+        [
+            _read_jsonl(directory / "window_1.jsonl"),
+            _read_jsonl(directory / "window_2.jsonl"),
+        ],
+    )
 
 
 class BatchDriftResult(TypedDict):

@@ -155,6 +155,17 @@ def main() -> int:
             "One batch is not a consecutive-window warning.",
             flush=True,
         )
+        embedding = request_json(
+            api,
+            "/internal/demo/batch-embedding-drift",
+            payload={"case_ids": [case["case_id"] for case in successes]},
+            headers={"X-Internal-Token": token, "Idempotency-Key": str(uuid.uuid4())},
+        )
+        print(
+            f"Embedding centroid distance: {embedding['cosine_distances'][0]:.3f} "
+            "(local model, no alert threshold).",
+            flush=True,
+        )
         print("Refresh Grafana after telemetry export and the next Prometheus scrape.")
         return 0
     except (RuntimeError, KeyError, EOFError, KeyboardInterrupt) as error:
